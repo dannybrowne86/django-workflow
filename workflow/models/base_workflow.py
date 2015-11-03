@@ -107,6 +107,9 @@ class Transition(models.Model):
         blank=True, null=True, default='default.html',
         help_text='What is the name of the template file to use for the'
         'notification emails for this transition?')
+    backup_notification_text = models.TextField(blank=True,
+        help_text='For users that do not have HTML email, what is the backup '
+            'text for the email?')
     button_type = models.CharField(max_length=32, default='', blank=True,
         null=True, help_text='Bootstrap v2.3.2 class name.')
     priority = models.PositiveSmallIntegerField(default=0,
@@ -131,12 +134,11 @@ class Transition(models.Model):
 
     def __unicode__(self):
         if self.start_state:
-            return '%s: %s -> %s' % (self.name, self.start_state.name, self.end_state.name)
+            return '%s: %s -> %s' % (self.name, self.start_state.name,
+                self.end_state.name)
         else:
-            return '%s: %s -> %s' % (self.name, "(start)", self.end_state.name)
+            return '%s: (start) -> %s' % (self.name, self.end_state.name)
 
-    # def clean(self):
-    #     pass
 
 class Ticket(models.Model):
     LOW = 'info'
@@ -149,40 +151,56 @@ class Ticket(models.Model):
         (HIGH, 'High'),
         (CRITICAL, 'Critical')
     )
-    form_id = models.CharField(default=None, max_length=64, null=True, blank=True)
+    
+    workflow = models.ForeignKey(Workflow)
+    form_id = models.CharField(default=None, max_length=64, blank=True)
+    
     submitter = models.ForeignKey(User,
         help_text='The user that requested the submission of the ticket.')
+    submitter_business = models.ForeignKey(Business,
+        related_name='submitter_business')
     created_by = models.ForeignKey(User,
         help_text='The user that entered the ticket into the system.')
     last_user = models.ForeignKey(User, 
         help_text='The last user to modify the ticket in any way.')
-    assignee = models.ForeignKey(User, blank=True, null=True,
+    assignee = models.ForeignKey(User, blank=True,
         help_text='The user currently assigned to work on the ticket.')
+    
     created_at = models.DateTimeField(auto_now_add=True)
-    scheduled = models.DateTimeField(verbose_name='Scheduled Date', blank=True, null=True)
-    effort = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='Level of Effort', help_text='Estimate the number of hours required to complete the task.')
     last_activity = models.DateTimeField(auto_now=True)
-    submitter_business = models.ForeignKey(Business, related_name='submitter_business')
+    scheduled = models.DateTimeField(verbose_name='Scheduled Date',
+        blank=True, null=True)
+    
+    effort = models.DecimalField(max_digits=5, decimal_places=2, null=True,
+        blank=True, verbose_name='Level of Effort', help_text='Estimate the '
+            'number of hours required to complete the task.')
+    mgmt_effort = models.DecimalField(max_digits=5, decimal_places=2, null=True,
+        blank=True, verbose_name='Management Level of Effort Estimate',
+        help_text='Management estimate of the number of hours required to '
+            'complete the task.')
     priority = models.CharField(max_length=12, choices=PRIORITIES,
         default=NORMAL)
+    
     fixed_due_date = models.DateField(verbose_name='Fixed Due Date', null=True, blank=True)
     relative_due_date_ticket = models.ForeignKey('self',
-        verbose_name='Relative Due Date Linked General Task',
+        verbose_name='Relative Due Date Linked Task',
         null=True, blank=True)
     relative_due_days_delta = models.IntegerField(
         verbose_name='Relative Due Date Days Delta', null=True, blank=True)
-    cached_relative_due_date = models.DateField(
-        verbose_name='Relative Due Date', null=True, blank=True)
+    cached_due_date = models.DateField(
+        verbose_name='Due Date', null=True, blank=True)
+    
     description = models.TextField()
-    response = models.TextField(null=True, blank=True)
-    status = models.ForeignKey(State, default=1)
+    response = models.TextField(blank=True)
+    status = models.ForeignKey(State)
     
     # putting this here as ManyToMany because it would be bad practice to
     # add this to the Entry object, imho
     entries = models.ManyToManyField(Entry, null=True, blank=True)
     users = models.ManyToManyField(User, null=True, blank=True)
     tags = TaggableManager()
-    recurring_ticket = models.ForeignKey('RecurringGeneralTask', null=True, blank=True)
+    recurring_ticket = models.ForeignKey('RecurringTicket', null=True,
+        blank=True)
     
     business = models.ForeignKey(Business, null=True, blank=True)
     contact = models.ForeignKey(Contact, null=True, blank=True)
@@ -196,70 +214,81 @@ class Ticket(models.Model):
         return self.form_id
 
     def clean(self, *args, **kwargs):
-        if self.fixed_due_date and self.relative_due_general_task:
+        if self.fixed_due_date and self.relative_due_date_ticket:
             raise ValidationError('You cannot set both a Fixed Due Date and a '
-                'Relative Due Date General Task.')
+                'Relative Due Date.')
+        
         elif self.fixed_due_date and self.relative_due_days_delta:
             raise ValidationError('You cannot set both a Fixed Due Date and a '
                 'Relative Due Date Days Delta.')
-        elif self.fixed_due_date is None and (self.relative_due_general_task and self.relative_due_days_delta is None):
+        
+        elif self.fixed_due_date is None and (self.relative_due_date_ticket
+            and self.relative_due_days_delta is None):
+
             raise ValidationError('To set a Relative Due Date set both the '
-                'Relative Due Date General Task (the associated General Task '
+                'Relative Due Date Linked Task (the associated Ticket '
                 'to delta the Due Date off of) and the Relative Due Date Days '
-                'Delta (an integer).')
-        elif self.fixed_due_date is None and (self.relative_due_general_task is None and self.relative_due_days_delta):
+                'Delta (integer of difference between referenced Ticket '
+                'Due Date and this tickets\'s due date).')
+        
+        elif self.fixed_due_date is None and (self.relative_due_date_ticket
+            is None and self.relative_due_days_delta):
             raise ValidationError('To set a Relative Due Date set both the '
-                'Relative Due Date General Task (the associated General Task '
+                'Relative Due Date Linked Task (the associated Ticket '
                 'to delta the Due Date off of) and the Relative Due Date Days '
-                'Delta (integer of difference between referenced General Task '
-                'Due Date and this task\'s due date).')
-        elif self.fixed_due_date is None and self.relative_due_general_task is None and self.relative_due_days_delta is None:
+                'Delta (integer of difference between referenced Ticket '
+                'Due Date and this tickets\'s due date).')
+        
+        elif self.fixed_due_date is None and self.relative_due_date_ticket is None and self.relative_due_days_delta is None:
             raise ValidationError('You must set either a Fixed Due Date or '
                 'both a Relative Due Date General Task (the associated '
                 'General Task to delta the Due Date off of) and Relative Due '
                 'Date Days Delta (integer of difference between referenced '
                 'General Task Due Date and this task\'s due date).')
 
-        # if relative due date not selected, be sure there is no cycle introduced
+        # if relative due date selected, be sure there is no cycle introduced
         if self.fixed_due_date is None and self.id is not None:
-            current_gt = self.relative_due_general_task
-            while current_gt.fixed_due_date is None:
-                if current_gt.id == self.id:
+            current_ticket = self.relative_due_date_ticket
+            while current_ticket.fixed_due_date is None:
+                if current_ticket.id == self.id:
                     # should not get here, because the circular reference will
                     # have the old fixed date, perhaps, therefore need the
                     # second check outside the while
                     raise ValidationError('With the selected Relative Due '
-                        'Date General Task you will introduce a Due Date '
+                        'Date Ticket you will introduce a Due Date '
                         'reference cylce.  Select a different General Task '
                         'or set a Fixed Due Date.')
-                current_gt = current_gt.relative_due_general_task
-            if current_gt.id == self.id:
+                current_ticket = current_ticket.relative_due_date_ticket
+
+            if current_ticket.id == self.id:
                 raise ValidationError('With the selected Relative Due '
-                        'Date General Task you will introduce a Due Date '
+                        'Date Ticket you will introduce a Due Date '
                         'reference cylce.  Select a different General Task '
                         'or set a Fixed Due Date.')
 
-    @property
-    def requested_date(self):
+    def set_cached_due_date(self):
         if self.fixed_due_date:
-            return self.fixed_due_date
+            self.cached_due_date = self.fixed_due_date
         else:
             delayed_days = self.relative_due_days_delta
             delta = 1 if self.relative_due_days_delta >= 0 else -1
             dates = [datetime.date.today(),
                 datetime.date.today() + relativedelta(days=2*delayed_days)]
             holidays = Holiday.holidays_between_dates(min(dates), max(dates))
-            due_date = self.relative_due_general_task.requested_date
+            
+            if self.relative_due_date_ticket.cached_due_date is None:
+                # we want to recursively call this to make sure everything is
+                # up to date when we are setting a cached value
+                self.relative_due_date_ticket.set_cached_due_date()
+
+            due_date = self.relative_due_date_ticket.cached_due_date
             while delayed_days != 0:
                 due_date = due_date + relativedelta(days=delta)
                 if due_date not in holidays and due_date.weekday() < 5:
                     delayed_days  -= delta
 
-            return due_date
-
-    @property
-    def view_url(self):
-        return reverse('view_general_task', args=(self.id,))
+            self.cached_due_date = due_date
+        self.save()
 
     @property
     def hours_spent(self):
@@ -267,19 +296,22 @@ class Ticket(models.Model):
     
     @property
     def overdue(self):
-        if (self.requested_date - datetime.date.today()).days <= 0:
-            return (self.requested_date - datetime.date.today()).days
+        if (self.cached_due_date - datetime.date.today()).days <= 0:
+            return (self.cached_due_date - datetime.date.today()).days
         else:
             return 1
 
     @property
     def past_due(self):
-        return self.requested_date <= datetime.date.today()
+        return self.cached_due_date <= datetime.date.today()
 
     @property
     def available_hours(self):
-        end_date = self.requested_date
+        end_date = self.cached_due_date
         if end_date is None or self.effort is None:
+            # TODO: what is an appropriate amount of effort (man-days) to set
+            #       for a task that has no effort or no due date?  Right now
+            #       we set at 2 hours (a quarter-day)
             return 0.25 # or 0.0?
         else:
             if type(end_date) is datetime.datetime:
@@ -340,81 +372,102 @@ class Ticket(models.Model):
     
     @property
     def weighted_priority(self):
-        # min_days_remaining = max((self.requested_date-datetime.date.today()).days, 0.5)
+        # min_days_remaining = max((self.cached_due_date-datetime.date.today()).days, 0.5)
         return 0.9**((self.available_hours/self.hours_per_day) - self.priority_scale) + 1
         #return self.priority_scale * self.hours_per_day
 
-    def get_unique_id(self, time=None, business=None):
+    def get_unique_id(self, workflow=None, time=None, business=None):
+        if workflow is None:
+            workflow = self.workflow
         if time is None:
             time = self.created_at
         if business is None:
-            business = self.business
-        count = len(GeneralTask.objects.filter(created_at__year=time.year,
-                                               business=business,
-                                               created_at__lte=time))
-        return "%s-%s-%d-%04d" % (self.SHORT_NAME,
+            business = self.submitter_business
+        count = len(Ticket.objects.filter(created_at__year=time.year,
+                                          business=business,
+                                          created_at__lte=time,
+                                          workflow=workflow))
+        return "%s-%s-%d-%04d" % (self.workflow.short_name,
                                   business.short_name,
                                   time.year,
                                   count)
 
     def save(self, *args, **kwargs):
-        user_profile = UserProfile.objects.get(user=self.created_by)
-        self.business = user_profile.business
-        super(GeneralTask, self).save(*args, **kwargs)
         if self.form_id is None:
-            self.form_id = self.get_unique_id(time=self.created_at, business=self.business)
-            for user in Group.objects.get(id=5).user_set.all():
-                self.users.add(user)
+            user_profile = UserProfile.objects.get(user=self.created_by)
+            self.submitter_business = user_profile.business
+            
+            self.form_id = self.get_unique_id(workflow=self.workflow,
+                time=self.created_at, business=self.business)
             self.users.add(self.created_by)
+            self.users.add(self.submitter)
             if self.assignee:
                 self.users.add(self.assignee)
-            self.save()
+        
+        super(Ticket, self).save(*args, **kwargs)
 
         # create a historical record
-        history = GeneralTaskHistory(general_task=self,
-                                     form_id=self.form_id,
-                                     submitter=self.submitter,
-                                     created_by=self.created_by,
-                                     last_user=self.last_user,
-                                     assignee=self.assignee,
-                                     created_at=self.created_at,
-                                     scheduled=self.scheduled,
-                                     effort=self.effort,
-                                     last_activity=self.last_activity,
-                                     business=self.business,
-                                     fixed_due_date=self.fixed_due_date,
-                                     relative_due_general_task=self.relative_due_general_task,
-                                     relative_due_days_delta=self.relative_due_days_delta,
-                                     description=self.description,
-                                     response=self.response,
-                                     status=self.status)
-        history.save()
+        TicketHistory.objects.create(
+            ticket=self,
+            workflow=self.workflow,
+            form_id=self.form_id,
+            submitter=self.submitter,
+            submitter_business=self.submitter_business,
+            created_by=self.created_by,
+            last_user=self.last_user,
+            assignee=self.assignee,
+            created_at=self.created_at,
+            last_activity=self.last_activity,
+            scheduled=self.scheduled,
+            effort=self.effort,
+            mgmt_effort=self.mgmt_effort,
+            priority=self.priority,
+            fixed_due_date=self.fixed_due_date,
+            relative_due_date_ticket=self.relative_due_date_ticket,
+            relative_due_days_delta=self.relative_due_days_delta,
+            cached_due_date=self.cached_due_date,
+            description=self.description,
+            response=self.response,
+            status=self.status,
+            recurring_ticket=self.recurring_ticket,
+            business=self.business,
+            contact=self.contact,
+            contract=self.contract,
+            lead=self.lead,
+            project=self.project,
+            document=self.document
+        )
 
     def get_absolute_url(self):
-        return reverse('view_general_task', args=(self.pk,))
+        return reverse('view_workflow_ticket', args=(self.id,))
 
     @property
     def next_actions(self):
-        return GeneralTaskTransition.objects.filter(start_state=self.status, start_state__terminal=False).order_by('-priority')
+        return Transition.objects.filter(workflow=self.workflow, 
+            start_state=self.status, start_state__terminal=False
+            ).order_by('-priority')
 
     @property
     def reopen_actions(self):
-        return GeneralTaskTransition.objects.filter(start_state=self.status, start_state__terminal=True).order_by('-priority')
+        return Transition.objects.filter(workflow=self.workflow,
+            start_state=self.status, start_state__terminal=True
+            ).order_by('-priority')
 
     @property
     def get_notes(self):
-        return GeneralTaskNote.objects.filter(general_task=self).order_by('-created_at')
+        return TicketNote.objects.filter(ticket=self).order_by('-created_at')
 
     @property
     def get_attachments(self):
-        return GeneralTaskAttachment.objects.filter(general_task=self).order_by('upload_utc')
+        return TicketAttachment.objects.filter(ticket=self
+            ).order_by('upload_utc')
 
     @property
     def get_total_hours(self):
         return self.entries.all().aggregate(Sum('hours'))['hours__sum'] or 0
 
 
-class RecurringTask(models.Model):
+class RecurringTicket(models.Model):
     DAILY = 'daily'
     WEEKLY = 'weekly'
     NTH_WEEKDAY = 'nth_weekday'
@@ -443,45 +496,49 @@ class RecurringTask(models.Model):
                      (1, 'Repeat interval sets date ticket is *due*.'))
 
     name = models.CharField(max_length=64,
-        help_text='This is a name to identify the recurring task.')
+        help_text='This is a name to identify the recurring ticket.')
     form_id = models.CharField(max_length=32, null=True, blank=True)
     description = models.TextField(
-        help_text='Description of this recurring task.')
+        help_text='Description of this recurring ticket.')
     submitter = models.ForeignKey(User,
-        related_name='recurring_task_submitter', help_text='The user that you '
+        related_name='recurring_ticket_submitter', help_text='The user that you '
         'want listed as the submitter on the created tickets.')
     created_by = models.ForeignKey(User,
-        related_name='recurring_task_created_by',
-        help_text='The user that created this recurring task.')
+        related_name='recurring_ticket_created_by',
+        help_text='The user that created this recurring ticket.')
     created_at = models.DateTimeField(auto_now_add=True)
     last_user = models.ForeignKey(User,
-        related_name='recurring_task_last_user',
-        help_text='The user last edited the recurring task.')
+        related_name='recurring_ticket_last_user',
+        help_text='The user last edited the recurring ticket.')
     last_activity = models.DateTimeField(auto_now=True)
     active = models.BooleanField(default=True,
-        help_text='To disable a recurring task (keep it from creating new '
-            'tasks), unselect this checkbox.')
+        help_text='To disable a recurring ticket (keep it from creating new '
+            'tickets), unselect this checkbox.')
     deleted = models.BooleanField(default=False,
-        help_text='To hide the recurring task from the front-end, select this option.')
+        help_text='To hide the recurring ticket from the front-end, '
+            'select this option.')
     
-    task_description = models.TextField(
+    ticket_description = models.TextField(
         help_text='Text to place in the created ticket description.')
-    task_assignee = models.ForeignKey(User,
-        related_name='recurring_task_assignee',
+    ticket_assignee = models.ForeignKey(User,
+        related_name='recurring_ticket_assignee',
         help_text='The default assignee for the ticket to be created.')
-    task_effort = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
-        verbose_name='Level of Effort', help_text='Estimate the number of hours required to complete the Task.')
-    task_priority = models.CharField(max_length=12, choices=GeneralTask.PRIORITIES, 
-        default=GeneralTask.NORMAL, help_text='The priority of the Tasks to be created.')
+    ticket_effort = models.DecimalField(max_digits=5, decimal_places=2,
+        null=True, blank=True, verbose_name='Level of Effort',
+        help_text='Estimate the number of hours required to complete the '
+            'ticket.')
+    ticket_priority = models.CharField(max_length=12,
+        choices=Ticket.PRIORITIES, default=Ticket.NORMAL,
+        help_text='The priority of the tickets to be created.')
 
-    last_task_created = models.DateField(null=True, blank=True,
-        help_text='The date of last time a task was created from this '
+    last_ticket_created = models.DateField(null=True, blank=True,
+        help_text='The date of last time a ticket was created from this '
         'recurring item.')
-    next_task_created = models.DateField(null=True, blank=True,
-        help_text='The next date a task should be created from this '
+    next_ticket_created = models.DateField(null=True, blank=True,
+        help_text='The next date a ticket should be created from this '
         'recurring item.')
 
-    # this is when the task will be created
+    # this is when the ticket will be created
     interval_for_due = models.PositiveSmallIntegerField(
         verbose_name='Repeat interval sets...',
         choices=INTERVAL_DATE, default=0)
@@ -494,11 +551,13 @@ class RecurringTask(models.Model):
         help_text='Select the date you want to start the repeat interval. '
         'This needs to be today or in the future.')
     end_condition = models.CharField(choices=END, max_length=16,
-        help_text='When do you want tasks to no longer be automatically created?')
+        help_text='When do you want tickets to no longer be automatically '
+            'created?')
     end_date = models.DateField(null=True, blank=True,
         help_text='If End Condition is "On Date", enter the date here.')
     after = models.PositiveSmallIntegerField(null=True, blank=True,
-        help_text='If End Condition is "After [n] occurences", enter an Integer here.')
+        help_text='If End Condition is "After [n] occurences", enter a '
+            'positive Integer here.')
     weekdays = models.CommaSeparatedIntegerField(max_length=16, null=True,
         blank=True)
     days_of_month = models.CommaSeparatedIntegerField(max_length=100,
@@ -507,8 +566,8 @@ class RecurringTask(models.Model):
     due_date_unit = models.CharField(max_length=8, choices=TIME_UNITS)
     due_date_interval = models.PositiveSmallIntegerField()
 
-    limit_to_one_active_task = models.BooleanField(default=True,
-        help_text='If you do not want to have a new task automatically '
+    limit_to_one_active_ticket = models.BooleanField(default=True,
+        help_text='If you do not want to have a new ticket automatically '
         'created if there is still one open, select this option.')
     
     class Meta:
@@ -519,7 +578,7 @@ class RecurringTask(models.Model):
 
     @property
     def get_notes(self):
-        return self.recurringgeneraltasknote_set.all().order_by('-created_at')
+        return self.recurringticketnote_set.all().order_by('-created_at')
 
     @property
     def get_weekdays(self):
@@ -548,63 +607,63 @@ class RecurringTask(models.Model):
         else:
             return None
 
-    def create_general_task(self):
+    def create_ticket(self):
         # check that there has not been one submitted on the same day
-        gt = GeneralTask.objects.filter(recurring_task=self, 
+        ticket = Ticket.objects.filter(recurring_ticket=self, 
             created_at__startswith=datetime.date.today())
-        if gt.count() == 1:
-            return gt[0]
-        elif gt.count() > 0:
+        if ticket.count() == 1:
+            return ticket[0]
+        elif ticket.count() > 0:
             # TODO: perhaps raise an exception
-            return gt
+            return ticket
 
         # there is going to be an update
         # self.last_user = User.objects.get(id=4)            
 
-        # if we only want 1 active task, check to see if there's others
+        # if we only want 1 active ticket, check to see if there's others
         # already open
-        if self.limit_to_one_active_task:
-            if GeneralTask.objects.filter(recurring_task=self,
+        if self.limit_to_one_active_ticket:
+            if Ticket.objects.filter(recurring_ticket=self,
                 status__terminal=False).count():
                 # do not create another one, but update the future date
-                self.next_task_created = self.get_next_day()
+                self.next_ticket_created = self.get_next_day()
                 self.save()
-                return GeneralTask.objects.filter(recurring_task=self,
+                return Ticket.objects.filter(recurring_ticket=self,
                     status__terminal=False).order_by('-created_at')[0]
 
 
         kwarg = {'%ss'%self.due_date_unit: self.due_date_interval}
         due_date = datetime.date.today() + relativedelta(**kwarg)
 
-        gt = GeneralTask(created_by=self.created_by if \
+        ticket = Ticket(created_by=self.created_by if \
             self.created_by.is_active else self.last_user,
                          submitter=self.submitter,
                          last_user=self.last_user,
-                         assignee=self.task_assignee,
-                         effort=self.task_effort,
-                         priority=self.task_priority,
+                         assignee=self.ticket_assignee,
+                         effort=self.ticket_effort,
+                         priority=self.ticket_priority,
                          fixed_due_date=due_date,
-                         description=self.task_description,
-                         recurring_task=self)
-        gt.save()
+                         description=self.ticket_description,
+                         recurring_ticket=self)
+        ticket.save()
         
-        # set that last task created to today
-        self.last_task_created = datetime.date.today()
-        # determine when the next task should be created and save that date
-        self.next_task_created = self.get_next_day()
+        # set that last ticket created to today
+        self.last_ticket_created = datetime.date.today()
+        # determine when the next ticket should be created and save that date
+        self.next_ticket_created = self.get_next_day()
         self.save()
 
-        return gt
+        return ticket
 
     def get_next_day(self):
         """Based on the recurrence pattern defined in the instance,
-        this function determines what the next occurence of should be.
+        this function determines when the next occurence should be.
         """
         # assumes that today is not an option
         next_date = datetime.date.today()
-        if self.last_task_created:
+        if self.last_ticket_created:
             kwarg = {'%ss'%self.due_date_unit: self.due_date_interval}
-            next_date = self.last_task_created + relativedelta(**kwarg) + \
+            next_date = self.last_ticket_created + relativedelta(**kwarg) + \
                 relativedelta(days=1)
         
         next_date = max(next_date, datetime.date.today() + datetime.timedelta(days=1))
@@ -648,8 +707,8 @@ class RecurringTask(models.Model):
 
         elif self.repeat_type == self.NTH_WEEKDAY:
             dow = self.get_weekdays[0]
-            if self.last_task_created:
-                next_date = self.last_task_created.replace(day=1)
+            if self.last_ticket_created:
+                next_date = self.last_ticket_created.replace(day=1)
                 for i in range(self.repeat_interval):
                     next_date = (next_date + datetime.timedelta(days=31)).replace(day=1)
             else:
@@ -672,15 +731,15 @@ class RecurringTask(models.Model):
             if next_date > datetime.date.today():
                 pass
             else:
-                self.last_task_created = next_date
+                self.last_ticket_created = next_date
                 self.save()
                 return self.get_next_day()
 
         elif self.repeat_type == self.YEARLY:
             # TODO: only works for repeat_interval 1 right now
-            if self.last_task_created:
-                # TODO: this should be more robust to not use the last_task_created date
-                next_date = self.last_task_created + relativedelta(years=1)
+            if self.last_ticket_created:
+                # TODO: this should be more robust to not use the last_ticket_created date
+                next_date = self.last_ticket_created + relativedelta(years=1)
 
             else:
                 next_date = self.start_date
@@ -696,48 +755,50 @@ class RecurringTask(models.Model):
     def get_unique_id(self, time=None, business='+++'):
         if time is None:
             time = self.created_at
-        count = len(RecurringGeneralTask.objects.filter(
+        count = len(RecurringTicket.objects.filter(
             created_at__year=time.year,
             created_at__lte=time))
-        return "%s-R-%s-%s-%03d" % (self.SHORT_NAME,
-                                  business,
-                                  time.strftime('%y'),
-                                  count)
+        return "%s-R-%s-%s-%03d" % (
+            self.workflow.short_name,
+            business,
+            time.strftime('%y'),
+            count)
 
     def save(self, *args, **kwargs):
         user_profile = UserProfile.objects.get(user=self.created_by)
-        super(RecurringGeneralTask, self).save(*args, **kwargs)
+        super(RecurringTicket, self).save(*args, **kwargs)
         today = datetime.date.today()
         if self.form_id is None:
-            self.form_id = self.get_unique_id(time=self.created_at, business=user_profile.business.short_name)
+            self.form_id = self.get_unique_id(time=self.created_at,
+                business=user_profile.business.short_name)
             self.save()
 
-        no_current_tasks = not(bool(self.generaltask_set.filter(
+        no_current_tickets = not(bool(self.generalticket_set.filter(
             status__terminal=False).count()))
 
         if ((self.repeat_type == self.DAILY) and
-            no_current_tasks and
+            no_current_tickets and
             (today.weekday()<=4) and
             (not Holiday.is_holiday(today))):
 
-            self.create_general_task()
+            self.create_general_ticket()
 
         elif ((self.repeat_type == self.WEEKLY) and 
-            no_current_tasks and
+            no_current_tickets and
             (today.weekday() in self.get_weekdays) and
             (not Holiday.is_holiday(today))):
 
-            self.create_general_task()
+            self.create_general_ticket()
 
         elif ((self.repeat_type == self.MONTHLY) and
-            no_current_tasks and
+            no_current_tickets and
             (today.day in self.get_month_days) and
             (not Holiday.is_holiday(today))):
 
-            self.create_general_task()
+            self.create_general_ticket()
 
         elif ((self.repeat_type == self.NTH_WEEKDAY) and
-            no_current_tasks and
+            no_current_tickets and
             (today.weekday() in self.get_weekdays) and
             (not Holiday.is_holiday(today))):
 
@@ -748,27 +809,27 @@ class RecurringTask(models.Model):
                 if d.weekday() in self.get_weekdays:
                     count += 1
             if count == self.ordinal:
-                self.create_general_task()
+                self.create_general_ticket()
 
         elif ((self.repeat_type == self.YEARLY) and
-            no_current_tasks and
+            no_current_tickets and
             (today == self.start_date)):
 
-            self.create_general_task()
+            self.create_general_ticket()
 
         else:
-            # determine when the next task should be created and save that date
+            # determine when the next ticket should be created and save that date
             self.next_task_created = self.get_next_day()
             if self.next_task_created < datetime.date.today():
                 self.create_general_task()
-            super(RecurringGeneralTask, self).save(*args, **kwargs)
+            super(RecurringTicket, self).save(*args, **kwargs)
             
 
     # this should be run daily with a cron job
     @classmethod
-    def create_general_tasks(cls, date=datetime.date.today()):
-        for rgt in RecurringGeneralTask.objects.filter(active=True, next_task_created=date):
-            rgt.create_general_task()
+    def create_tickets(cls, date=datetime.date.today()):
+        for rt in RecurringTicket.objects.filter(active=True, next_task_created=date):
+            rt.create_general_task()
 
     def ordinal_display(self, num):
         # provides ordinal number up to 31st
@@ -845,62 +906,108 @@ class RecurringTask(models.Model):
 
         return s
 
-class GeneralTaskHistory(models.Model):
-    general_task = models.ForeignKey(GeneralTask)
-    form_id = models.CharField(default=None, max_length=64, null=True, blank=True)
-    submitter = models.ForeignKey(User, related_name='generaltask_histry_submitter', help_text='The user that requested the submission of the ticket.')
-    created_by = models.ForeignKey(User, related_name='generaltask_history_created_by', help_text='The user that entered the ticket into the system.')
-    last_user = models.ForeignKey(User, related_name='generaltask_history_last_user', help_text='The user that entered the ticket into the system.')
-    assignee = models.ForeignKey(User, related_name='generaltask_history_assignee', blank=True, null=True, help_text='The user that is currently assigned to respond to the ticket.')
+
+class TicketHistory(models.Model):
+    ticket = models.ForeignKey(Ticket)
+    workflow = models.ForeignKey(Workflow)
+    form_id = models.CharField(max_length=64)
+    
+    submitter = models.ForeignKey(User,
+        help_text='The user that requested the submission of the ticket.')
+    submitter_business = models.ForeignKey(Business,
+        related_name='submitter_business')
+    created_by = models.ForeignKey(User,
+        help_text='The user that entered the ticket into the system.')
+    last_user = models.ForeignKey(User, 
+        help_text='The last user to modify the ticket in any way.')
+    assignee = models.ForeignKey(User, blank=True,
+        help_text='The user currently assigned to work on the ticket.')
+    
     created_at = models.DateTimeField(auto_now_add=True)
-    scheduled = models.DateTimeField(verbose_name='Scheduled Date', blank=True, null=True)
-    effort = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name='Level of Effort', help_text='Estimate the number of hours required to complete the task.')
     last_activity = models.DateTimeField(auto_now=True)
-    business = models.ForeignKey(Business)
+    scheduled = models.DateTimeField(verbose_name='Scheduled Date',
+        blank=True, null=True)
+    
+    effort = models.DecimalField(max_digits=5, decimal_places=2, null=True,
+        blank=True, verbose_name='Level of Effort', help_text='Estimate the '
+            'number of hours required to complete the task.')
+    mgmt_effort = models.DecimalField(max_digits=5, decimal_places=2, null=True,
+        blank=True, verbose_name='Management Level of Effort Estimate',
+        help_text='Management estimate of the number of hours required to '
+            'complete the task.')
+    priority = models.CharField(max_length=12, choices=PRIORITIES,
+        default=NORMAL)
+    
     fixed_due_date = models.DateField(verbose_name='Fixed Due Date', null=True, blank=True)
-    relative_due_general_task = models.ForeignKey(GeneralTask, related_name='relative_due_date_task_history', verbose_name='Relative Due Date Linked General Task', null=True, blank=True)
-    relative_due_days_delta = models.IntegerField(verbose_name='Relative Due Date Days Delta', null=True, blank=True)
+    relative_due_date_ticket = models.ForeignKey('self',
+        verbose_name='Relative Due Date Linked Task',
+        null=True, blank=True)
+    relative_due_days_delta = models.IntegerField(
+        verbose_name='Relative Due Date Days Delta', null=True, blank=True)
+    cached_due_date = models.DateField(
+        verbose_name='Due Date', null=True, blank=True)
+    
     description = models.TextField()
-    response = models.TextField(null=True, blank=True)
-    status = models.ForeignKey(GeneralTaskState, default=1)
-    # mgmt_approver = models.ForeignKey(User, blank=True, null=True)
-    # mgmt_approval_date = models.DateTimeField(blank=True, null=True)
+    response = models.TextField(blank=True)
+    status = models.ForeignKey(State)
+    
+    recurring_ticket = models.ForeignKey('RecurringTicket', null=True,
+        blank=True)
+    
+    business = models.ForeignKey(Business, null=True, blank=True)
+    contact = models.ForeignKey(Contact, null=True, blank=True)
+    contract = models.ForeignKey(ProjectContract, null=True, blank=True)
+    lead = models.ForeignKey(Lead, null=True, blank=True)
+    project = models.ForeignKey(Project, null=True, blank=True)
+    document = models.ForeignKey(Document, null=True, blank=True)
 
     def __unicode__(self):
-        return '%s (%s)' % (self.form_id, self.last_activity)
-
-    @property
-    def requested_date(self):
-        if self.fixed_due_date:
-            return self.fixed_due_date
-        else:
-            delayed_days = self.relative_due_days_delta
-            delta = 1 if self.relative_due_days_delta >= 0 else -1
-            due_date = self.relative_due_general_task.requested_date
-            while delayed_days != 0:
-                due_date = due_date + relativedelta(days=delta)
-                if not Holiday.is_paid_holiday(due_date) and due_date.weekday() > 5:
-                    delayed_days  -= delta
+        return '%s (%s)' % (str(self.ticket), self.last_activity)
 
 
-class GeneralTaskAttachment(models.Model):
-    general_task = models.ForeignKey(GeneralTask)
-    file_id = models.CharField(max_length=24) # str of object id
+class TicketAttachment(models.Model):
+    ticket = models.ForeignKey(Ticket)
+    ticket_temp_id = models.CharField(max_length=32, blank=True, null=True)
+    bucket = models.CharField(max_length=64)
+    uuid = models.TextField() # AWS S3 uuid
     filename = models.CharField(max_length=128)
-    upload_utc = models.DateTimeField()
-    uploader = models.ForeignKey(User)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User)
     description = models.TextField(blank=True, null=True)
 
+    class Meta:
+        ordering = ('created_at',)
+
     def __unicode__(self):
-        return "%s: %s" % (self.general_task.form_id, self.filename)
+        return "%s: %s" % (str(self.ticket), self.filename)
+
+    def get_s3_file_path(self):
+        conn = boto.connect_s3(settings.AWS_UPLOAD_CLIENT_KEY,
+            settings.AWS_UPLOAD_CLIENT_SECRET_KEY)
+        bucket = conn.get_bucket(self.bucket)
+        return bucket.get_key(self.uuid)
+
+    def get_download_url(self):
+        s3_file_path = self.get_s3_file_path()
+        url = s3_file_path.generate_url(expires_in=15) # expiry time is in seconds
+        return url
+
+    def delete(self):
+        try:
+            s3_file_path = self.get_s3_file_path()
+            s3_file_path.delete()
+        except:
+            # log this error
+            pass
+        super(TicketAttachment, self).delete()
 
 
-class GeneralTaskNote(models.Model):
-    general_task = models.ForeignKey(GeneralTask)
-    author = models.ForeignKey(User)
+class TicketNote(models.Model):
+    ticket = models.ForeignKey(Ticket)
+    created_by = models.ForeignKey(User)
     created_at = models.DateTimeField(auto_now_add=True)
     edited = models.BooleanField(default=False)
-    last_edited = models.DateTimeField(auto_now=True)
+    last_activity = models.DateTimeField(auto_now=True)
     parent = models.ForeignKey("self", null=True, blank=True)
     text = models.TextField()
 
@@ -910,15 +1017,18 @@ class GeneralTaskNote(models.Model):
             thread.append(n.get_thread(), thread)
 
     def save(self, *args, **kwargs):
-        super(GeneralTaskNote, self).save(*args, **kwargs)
-        url = 'https://firmbase.aacengineering.com%s' % (reverse('view_general_task', args=(self.general_task.id,)))
-        general_task_emails.new_note(self, url, Group.objects.get(name=GeneralTask.RESPONSIBLE_GROUP))
+        super(TicketNote, self).save(*args, **kwargs)
+        # TODO: change to get this from settings.
+        url = 'https://firmbase.aacengineering.com%s' % (reverse('view_workflow_ticket', args=(self.ticket.id,)))
+        # TODO: allow users to subscribe to feeds
+        # general_task_emails.new_note(self, url, Group.objects.get(name=GeneralTask.RESPONSIBLE_GROUP))
 
-class RecurringGeneralTaskNote(models.Model):
-    recurring_general_task = models.ForeignKey(RecurringGeneralTask)
-    author = models.ForeignKey(User)
+
+class RecurringTicketNote(models.Model):
+    recurring_ticket = models.ForeignKey(RecurringTicket)
+    created_by = models.ForeignKey(User)
     created_at = models.DateTimeField(auto_now_add=True)
     edited = models.BooleanField(default=False)
-    last_edited = models.DateTimeField(auto_now=True)
+    last_activity = models.DateTimeField(auto_now=True)
     parent = models.ForeignKey("self", null=True, blank=True)
     text = models.TextField()
