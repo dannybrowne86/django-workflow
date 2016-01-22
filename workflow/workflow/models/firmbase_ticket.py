@@ -9,7 +9,7 @@ class FirmBaseTicket(Ticket):
         ('admin', 'Admin Task')
     )
     type = models.CharField(max_length=12, choices=TYPES, default='bug')
-    
+
     importance = models.FloatField(default=4.0, help_text='Provide a number '
         'indicating priority.  Lower numbers are higher priority.  For '
         'Critical tickets, considering setting this to <=1.0.')
@@ -49,7 +49,7 @@ class FirmBaseTicket(Ticket):
 
         # create a historical record
         FirmBaseTicketHistory.objects.create(
-            ticket=self,
+            firmbase_ticket=self,
             type=self.type,
             importance=self.importance,
             proposed_ffp=self.proposed_ffp,
@@ -81,7 +81,7 @@ class FirmBaseTicketHistory(models.Model):
     firmbase_ticket = models.ForeignKey(FirmBaseTicket)
     type = models.CharField(max_length=12, choices=FirmBaseTicket.TYPES,
         default='bug')
-    
+
     importance = models.FloatField(default=4.0, help_text='Provide a number '
         'indicating priority.  Lower numbers are higher priority.  For '
         'Critical tickets, considering setting this to <=1.0.')
