@@ -1,0 +1,174 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags %}
+{% load workflow_templatetags %}
+{% load bootstrap_toolkit %}
+{% load url from future %}
+
+{% block title %}General Tasks{% endblock title %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="">General Tasks List</a>
+    </li>
+{% endblock crumbs %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>General Tasks{% if project %} for {{ project }}{% endif %}</h2>
+            <div style="padding-bottom: 12px;">
+                {% if perms.workflow.add_generaltask %}
+                    <a class="btn btn-primary" href="{% url 'create_general_task' %}">Create General Task</a>
+                {% endif %}
+                <a class="btn btn-success" href="{% url 'list_my_general_tasks' %}">Show My Tasks</a>
+                {% if perms.workflow.view_generaltask %}
+                <a class="btn" href="{% url 'list_open_general_tasks' %}">Show Open Tasks</a>
+                <a class="btn" href="{% url 'list_all_general_tasks' %}">Show All Tasks</a>
+                <a class="btn btn-info" href="{% url 'list_open_general_tasks' %}?export_gt_list=True">Export Open Tasks</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% if form %}
+    <div class="row-fluid">
+        <div class="span12">
+            <form class='form-inline' accept-charset='UTF-8' method='get' action=''>
+                {{ form|as_bootstrap:"inline" }}
+                <button type='submit' class='btn' name='submit'>Search</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+    {% if perms.workflow.view_user_generaltask and user_form %}
+    <div class="row-fluid">
+        <div class="span12">
+            <form class='form-inline' accept-charset='UTF-8' method='get' action='{% url "list_user_general_tasks" %}'>
+                {{ user_form|as_bootstrap:"inline" }}
+                <button type='submit' class='btn' name='user_tasks'>Show Tasks</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row-fluid">
+        <div class="span12">
+            {% load pagination_tags %}
+            {% autopaginate object_list %}
+
+            {% paginate %}
+            <table class='table table-bordered table-striped table-condensed'>
+                <thead>
+                    <tr>
+                        <th>Ticket ID</th>
+                        {% if request.user.id == 4 or request.user.id == 5 %}
+                        <th>Calc</th>
+                        {% endif %}
+                        <th>Priority</th>
+                        {% if form == None %}
+                        <th>Required Effort</th>
+                        {% endif %}
+                        <th>Status</th>
+                        <th>Actions</th>
+                        <th>Submitted</th>
+                        <th>Due Date /<br/>Scheduled</th>
+                        <th>Assigned To</th>
+                        <th>Last Activity</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for general_task in object_list %}
+                        <tr{% if general_task.past_due %} class="error"{% endif %}>
+                            <td style="white-space: nowrap"><a href="{% url 'view_general_task' general_task.pk %}">{{ general_task.form_id }}</a></td>
+                            {% if request.user.id == 4 or request.user.id == 5 %}
+                            <td style="white-space: nowrap">{{ general_task.weighted_priority }}</td>
+                            {% endif %}
+                            {% if form == None %}
+                            <td style="white-space: nowrap; text-align: center;">
+                                <span class="badge badge-{{ general_task.priority }}">{{ forloop.counter }}</span><br/>
+                                <span class="label label-{{ general_task.priority }}">{{ general_task.get_priority_display }}</span>
+                            </td>
+                            <td style="white-space: nowrap"><span>{{ general_task.hours_per_whole_day|floatformat:"-2" }} hrs/day</span></td>
+                            {% else %}
+                            <td style="white-space: nowrap ;text-align: center;">
+                                <span class="label label-{{ general_task.priority }}">{{ general_task.get_priority_display }}</span>
+                            </td>
+                            {% endif %}
+                            <td style="white-space: nowrap"><span class="label {{ general_task.status.label_style}}">{{ general_task.status }}</span></td>
+                            <td style="white-space: nowrap">
+                                {% if perms.workflow.edit_firmbaseticket or general_task.created_by == request.user %}
+                                    {% if not general_task.status.terminal %}
+                                        <a class="btn btn-primary btn-small" href='{% url "edit_general_task" general_task.pk %}'><i class="icon-pencil icon-white"></i> Edit</a>
+                                    {% else %}
+                                        {% for reopen_action in general_task.reopen_actions %}
+                                            <a class="btn {{ reopen_action.button_type }} btn-small" href="{% url 'transition_general_task' general_task.pk %}?transition_id={{ reopen_action.id }}">{{ reopen_action.name }}</a>`
+                                        {% endfor %}
+                                    {% endif %}
+                                {% endif %}
+                                {% if perms.workflow.change_generaltask %}
+                                    <a class="btn btn-primary btn-small" href='{% url "admin_edit_general_task" general_task.pk %}'><i class="icon-pencil icon-white"></i> Admin Edit</a>
+                                {% endif %}
+                                {% if general_task.next_actions|length > 0 %}
+                                <div class="btn-group">
+                                    <a class="btn btn-small dropdown-toggle" data-toggle="dropdown" href="#">
+                                    More
+                                    <span class="caret"></span>
+                                    </a>
+                                    <ul class="dropdown-menu" style="padding: 5px 5px 5px 5px;">
+                                    {% for next_action in general_task.next_actions %}
+                                        {% if next_action.permissions == 'all' %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' general_task.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                        {% elif next_action.permissions == 'guardian' %}
+                                            {% get_obj_perms request.user for next_action as "na_perms" %}
+                                            {% if 'can_execute_transition' in na_perms %}
+                                                <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' general_task.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                            {% endif %}
+                                        {% elif next_action.permissions == 'creator' %}
+                                          {% if general_task.created_by == request.user %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' general_task.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                          {% endif %}
+                                        {% elif next_action.permissions == 'assignee' %}
+                                          {% if general_task.assignee == request.user %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' general_task.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                          {% endif %}
+                                        {% elif next_action.permissions == 'guardiancreator' %}
+                                          {% get_obj_perms request.user for next_action as "na_perms" %}
+                                          {% if 'can_execute_transition' in na_perms or general_task.created_by == request.user %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' general_task.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                          {% endif %}
+                                        {% elif next_action.permissions == 'guardianassignee' %}
+                                          {% get_obj_perms request.user for next_action as "na_perms" %}
+                                          {% if 'can_execute_transition' in na_perms or general_task.assignee == request.user %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' general_task.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                          {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap">{{ general_task.submitter }} @<br/>{{ general_task.created_at|date:"N j, P" }}</td>
+                            <td style="white-space: nowrap">
+                                {% if general_task.past_due %}
+                                <span class="badge badge-important" title="This task is due today or is already past due."><i class="icon-calendar icon-white"></i></span>
+                                {% endif %}
+                                {{ general_task.requested_date }} /<br/>{{ general_task.scheduled|date }}
+                            </td>
+                            <td style="white-space: nowrap">
+                                {{ general_task.assignee }}
+                                {% if not general_task.status.terminal and perms.workflow.assign_general_task %}
+                                    <a class="btn btn-mini" href='{% url "assign_general_task" general_task.pk %}' title="Change assigned user"><i class="icon-pencil"></i> </a>
+                                {% endif %}
+                            </td>
+                            <td>{{ general_task.last_user }} @ {{ general_task.last_activity|date:"N j, P" }}</td>
+                            <td>{{ general_task.description|truncatewords:12 }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% paginate %}
+        </div>
+    </div>
+{% endblock content %}

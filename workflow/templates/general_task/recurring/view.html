@@ -1,0 +1,283 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags %}
+{% load bootstrap_toolkit %}
+{% load url from future %}
+{% load timepiece_tags bootstrap_toolkit %}
+
+{% block title %}Recurring General Task: {{ object.form_id }}{% endblock title %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="{% url 'list_recurring_general_tasks' %}">Recurring General Tasks</a>
+        <span class="divider">/</span><a href="">{{ object.form_id }}</a>
+    </li>
+{% endblock crumbs %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>{{ object.form_id }}</h2>
+            <div>
+                <a class="btn" href="{% url 'list_recurring_general_tasks' %}">Back to List</a>
+                {% if perms.workflow.change_recurringgeneraltask %}
+                    <a class="btn btn-primary" href="{% url 'edit_recurring_general_task' object.pk %}">Edit Wizard</a>
+                    <a class="btn btn-primary" href="{% url 'edit_recurring_general_task_info' object.pk %}">Edit Info</a>
+                {% endif %}
+                {% if perms.workflow.delete_recurringgeneraltask and not object.deleted %}
+                    <a class="btn btn-danger" href="{% url 'delete_recurring_general_task' object.pk %}">Delete</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span6">
+            <h3>Recurring General Task Details</h3>
+            <dl class="dl-horizontal">
+                <dt>Form ID:</dt><dd>{{ object.form_id }}</dd>
+                <dt>Name:</dt><dd>{{ object.name }}</dd>
+                <dt>Active:</dt>
+                <dd>
+                    {% if object.active %}
+                        <span class="label label-success"><i class="icon-white icon-ok"></i></span>
+                    {% else %}
+                        <span class="label label-important"><i class="icon-white icon-remove"></i></span>
+                    {% endif %}
+                </dd>
+                <dt>Description:</dt><dd>{{ object.description }}</dd>
+                <dt>Creator:</dt><dd>{{ object.created_by }}</dd>
+                <dt>Create Time:</dt><dd>{{ object.created_at }}</dd>
+                <dt>Last User:</dt><dd>{{ object.last_user }}</dd>
+                <dt>Last Edit:</dt><dd>{{ object.last_activity }}</dd>
+            </dl>
+
+            <h3>Created General Task Details</h3>
+            <dl class="dl-horizontal">
+                <dt>Description:</dt><dd>{{ object.task_description }}</dd>
+                <dt>Submitter:</dt><dd title="When General Tasks are created, they will set the Submitter to {{ object.submitter }}.">{{ object.submitter }}</dd>
+                <dt>Assignee:</dt><dd>{{ object.task_assignee }}</dd>
+                <dt>Level of Effort:</dt><dd>{{ object.task_effort }}</dd>
+                <dt>Priority:</dt><dd>{{ object.task_priority }}</dd>
+                <dt>Recurrence:</dt><dd>{{ object.recurrence_display }}</dd>
+                <dt>Due Date:</dt><dd>{{ object.due_date_interval }} {{ object.get_due_date_unit_display }} after creation</dd>
+            </dl>
+            {% comment %}
+            <div id="ticket-history" style="margin-top:12px;">
+            <div class="accordion" id="accordion2">
+            
+            <div class="accordion-group">
+                <div class="accordion-heading">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseOne">Total Hours Spent: {{ object.get_total_hours }} hours</a>
+                </div>
+                <div id="collapseOne" class="accordion-body collapse">
+                    <div class="accordion-inner">      
+                    {% for entry in object.entries.all %}
+                        <blockquote>
+                            <p>{{ entry.user }}: {{ entry.start_time|date }}, {{ entry.hours }} hours</p>
+                            <small>{{ entry.comments }}</small>
+                        </blockquote>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-group">
+                <div class="accordion-heading">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseOne">Ticket History Summary</a>
+                </div>
+                <div id="collapseOne" class="accordion-body collapse">
+                    <div class="accordion-inner">      
+                    {% for th in ticket_history %}
+                        <blockquote>
+                            <p>Moved ticket to {{ th.status.name }}.</p>
+                            <small>{{ th.last_user }} @ {{ th.last_activity }}</small>
+                        </blockquote>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="accordion-group">
+                <div class="accordion-heading">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseTwo">Ticket History Details</a>
+                </div>
+                <div id="collapseTwo" class="accordion-body collapse">
+                    <div class="accordion-inner">      
+                    {% for th in ticket_history %}
+                    <dl class="dl-horizontal">
+                        <dt>Update Time:</dt><dd>{{ th.last_activity }}</dd>
+                        <dt>Ticket ID:</dt><dd>{{ th.form_id }}</dd>
+                        <dt>Status:</dt><dd>{{ th.status }}</dd>
+                        <dt>Creator:</dt><dd>{{ th.created_by }}</dd>
+                        <dt>Create Time:</dt><dd>{{ th.created_at }}</dd>
+                        <dt>Assigned to:</dt><dd>{{ th.assignee }}</dd>
+                        <dt>Description:</dt><dd>{{ th.description|linebreaks }}</dd>
+                        <dt>Requested Response Date:</dt><dd>{{ th.requested_date }}</dd>
+                        <dt>Response:</dt><dd>{% if th.response %}{{ th.response|linebreaks }}{% else %}(TBD){% endif %}</dd>
+                        {% if th.mgmt_approver %}
+                        <dt>Management Approval:</dt><dd>{{ th.mgmt_approver }} at {{ th.mgmt_approval_date }}</dd>
+                        {% else %}
+                        <dt>Management Approval:</dt><dd>N/A</dd>
+                        {% endif %}
+                    </dl>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+            </div>
+            </div>
+            {% endcomment %}
+
+        </div>
+        {% url 'view_recurring_general_task' object.id as next_url %}
+        <div class="span3">
+            <h3>Notes</h3>
+            <form class="form-inline" action="{% url 'add_recurring_general_task_note' object.id %}?next={{ next_url }}" method="post" accept-charset="utf-8">
+                {% csrf_token %}
+                {{ add_note_form|as_bootstrap }}
+                <input class="btn btn-primary" type="submit" value="Add" />
+            </form>
+            <ul>
+                {% for note in object.get_notes %}
+                <li><strong>{{ note.author }} @ {{ note.last_edited }}</strong><br/>{{ note.text|linebreaks }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% comment %}
+        <div class="span3">
+            <h3>Tags</h3>
+            <div><a href="{% url 'general_task_metadata_tags' object.id %}" target="_blank">Add Metadata Tags</a></div>
+            <div id="tags">
+            {% if object.tags.all|length %}
+            {% for tag in object.tags.all %}
+            <span class="label label-info">
+                <a href="{% url 'similar_items' tag.id %}"> <i class="icon-magnet icon-white icon-small"> </i></a>
+                {{ tag }}
+                {% if is_it_admin or request.user.is_superuser %}
+                <a class="remove_tag"> <i class="icon-remove icon-white icon-small"> </i></a>
+                {% endif %}
+            </span>
+            {% endfor %}
+            {% else %}
+            <br/><em>There are no tags for this ticket yet.</em>
+            {% endif %}
+            </div>
+            <form id="add_tag_form">
+                <div style="margin-top: 12px;">
+                    <input id="new_tag" type="text" />
+                    <input id="add_tag_button" class="btn btn-primary" type="submit" value="Add" />
+                </div>
+            </form>
+
+            <h3>Attachments</h3>
+            <div id="file-uploader" name="File" class="controls">
+              <noscript>          
+                <p>Please enable JavaScript to use file uploader.</p>
+              </noscript>
+              <p class="help-block">Drag and drop a file (PDF) of the memo here.</p>
+            </div>
+            {% for attachment in object.get_attachments %}
+            <blockquote>
+            <p><a href="{% url 'download_general_task_attachment' attachment.file_id %}" target="_blank">{{ attachment.filename }}</a></p>
+            <small>{{ attachment.uploader }} @ {{ attachment.upload_utc }}</small>
+            </blockquote>
+            {% endfor %}
+
+            {% url 'view_general_task' object.id as next_url %}
+            <h3>Users</h3>
+            <ul class="users">
+                {% for user in object.users.all %}
+                    <li>
+                        {{ user.get_name_or_username }}
+                        {% if perms.workflow.add_user_generaltask %}
+                            {% with caption="Remove "|add:user.get_name_or_username|add:" from "|add:object.form_id %}
+                                <a title="{{ caption }}" href="{% url 'general_task_remove_user' object.id user.id%}?next={{ next_url|add_parameters:request.GET|urlencode }}"><i alt="{{ caption }}" class="icon-remove"></i></a>
+                            {% endwith %}
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+            {% if perms.workflow.add_user_generaltask %}
+                <form class="form-inline" action="{% url 'general_task_add_user' object.id %}?next={{ next_url|add_parameters:request.GET|urlencode }}" method="post" accept-charset="utf-8">
+                    {% csrf_token %}
+                    {{ add_user_form|as_bootstrap:"inline" }}
+                    <input class="btn" type="submit" value="Add" />
+                </form>
+            {% endif %}
+        </div>
+        {% endcomment %}
+    </div>
+    <div class="row-fluid">
+        <div class="span12">
+            <h3>General Tasks Summary</h3>
+            <span>This table provides summary details and links to the General Tasks that have been created from this Recurring General Task</span>
+            <table class="table table-condensed table-borded">
+                <tr>
+                    <th>General Task</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Due</th>
+                    <th>Hours Spent</th>
+                    <th>Last Activity</th>
+                </tr>
+                {% for general_task in object.generaltask_set.all %}
+                <tr>
+                    <td><a href="{% url 'view_general_task' general_task.id %}" target=="_blank">{{ general_task }}</a></td>
+                    <td style="white-space: nowrap">
+                        <span class="label {{ general_task.status.label_style}}">{{ general_task.status }}</span>
+                    </td>
+                    <td style="white-space: nowrap">{{ general_task.created_by }} @<br/>{{ general_task.created_at|date:"N j, P" }}</td>
+                    <td style="white-space: nowrap">{{ general_task.requested_date }}</td>
+                    <td>{{ general_task.get_total_hours }} hours</td>
+                    <td>{{ general_task.last_user }} @<br/>{{ general_task.last_activity|date:"N j, P" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan=5>No General Tasks have been created for this Recurring General Task</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+{% endblock content %}
+
+{% block extrajs %}
+<script src="{{ STATIC_URL }}ajaxuploader/js/fileuploader.js" ></script>
+<script src="{{ STATIC_URL }}project-toolbox/js/tags.js" ></script>
+<script>
+        ATTACHMENTS = {};
+        $(function(){
+        var uploader = new qq.FileUploader({
+            action: "{% url 'add_general_task_attachment' object.id %}",
+            element: $('#file-uploader')[0],
+            multiple: true,
+            onComplete: function(id, filename, responseJSON) {
+                if(responseJSON.success) {
+                    ATTACHMENTS[id] = {'id': id,
+                                       'filename': filename,
+                                       'json': responseJSON};
+                } else {
+                    console.log('fail', id, filename, responseJSON);
+                }
+            },
+            onAllComplete: function(uploads) {
+                // uploads is an array of maps
+                // the maps look like this: {file: FileObject, response: JSONServerResponse}
+                // do nothing
+            },
+            params: {
+                'csrf_token': '{{ csrf_token }}',
+                'csrf_name': 'csrfmiddlewaretoken',
+                'csrf_xname': 'X-CSRFToken',
+            },
+        });
+        });
+
+    $(document).ready(
+        function () {
+            create_remove_tag_handler("{% url 'remove_general_task_tag' object.id %}");
+            create_add_tag_handler("{% url 'general_task_tags' object.id %}");
+        }
+    );
+</script>
+{% endblock extrajs %}

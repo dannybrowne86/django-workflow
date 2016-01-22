@@ -1,0 +1,44 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load workflow_templatetags %}
+
+{% load url from future %}
+{% load bootstrap_toolkit %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="{% url 'list_open_it_tickets' %}">Open IT Tickets</a>
+        <span class="divider">/</span>
+        {% if not object %}
+            <a href="{% url 'create_it_ticket' %}">Submit IT Ticket</a>
+        {% else %}
+            {% if assign %}
+                <a href="{% url 'assign_it_ticket' object.pk %}">Assign {{ objectt }}</a>
+            {% else %}
+                <a href="{% url 'edit_it_ticket' object.pk %}">Edit {{ objectt }}</a>
+            {% endif %}
+        {% endif %}
+    </li>
+{% endblock crumbs %}
+
+{% block title %}{% if not object %}Submit IT Ticket{% else %}{% if assign %}Assign{% else %}Edit{% endif %} {{ object }}{% endif %}{% endblock title %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>{% if not object %}Submit IT Ticket{% if business %} for {{ business }}{% endif %}{% else %}{% if assign %}Assign{% else %}Edit{% endif %} {{ object }}{% endif %}</h2>
+
+            <br style="clear: both;" />
+
+            <form id="create-edit-project" class="form-horizontal" action="" method="post" accept-charset="utf-8">
+                {% csrf_token %}
+                {{ form|as_bootstrap:"horizontal" }}
+                <div class="form-actions">
+                    <input class="btn {% if transition %}{{ transition.button_type }}{% else %}btn-primary{% endif %}" type='submit' name='submit' value='{% if not object %}Submit{% else %}{% if transition %}{{ transition.name }}{% else %}Update{% endif %}{% endif %}' />
+                    <input class="btn btn-inverse" type='button' value='Cancel' onclick='history.go(-1)' />
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock content %}

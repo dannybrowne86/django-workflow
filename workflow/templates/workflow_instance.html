@@ -1,0 +1,277 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load workflow_templatetags %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span>
+        <a href="/workflow/{{ workflow.id }}/all">{{ workflow.name }}</a>
+    </li>
+    <li>
+        <span class="divider">/</span>
+        <a href="/workflow/{{ workflow.id }}/start">New {{ workflow.short_name}}</a>
+    </li>
+{% endblock crumbs %}
+
+    {% block extracss %}
+    <link href="{{ STATIC_URL }}ajaxuploader/css/fileuploader.css" media="screen" rel="stylesheet" type="text/css" />
+    <link href="{{ STATIC_URL }}datepicker/css/datepicker.css" media="screen" rel="stylesheet" type="text/css" />
+    {% endblock extracss %}
+
+    {% block content %}
+    <form id="workflow_form" class="form-horizontal">
+      {% csrf_token %}
+      <div class="control-group">
+        <label class="control-label"><strong>Form ID</strong></label>
+        <div class="controls" style="padding-top: 5px;">
+          {% if workflow_instance %}
+            <label>{{ workflow_instance.form_id }}</label>
+          {% else %}
+            <label>&lt;Will be set on submit&gt;</label>
+          {% endif %}
+        </div>
+      </div>
+      <div class="control-group">
+        <label class="control-label"><strong>Submitter</strong></label>
+        <div class="controls" style="padding-top: 5px;">
+          {% if workflow_instance %}
+            <label><a href="mailto:{{ workflow_instance.created_by.email }}">{{ workflow_instance.created_by.email }}</a></label>
+          {% else %}
+            {% if in_site_admin_group %}
+            <label class="radio" for="submitter-self">
+              <input type="radio" name="submitter-radios" id="submitter-self" value="self" checked="checked">
+              <a href="mailto:{{ user.email }}">{{ user.email }}</a>
+            </label>
+            <label class="radio" for="submitter-other">
+              <input type="radio" name="submitter-radios" id="submitter-other" value="other">
+              Submit for someone else
+            </label>
+            <p>
+            <select id="business_select" type="select" style="display: none;">
+                <option id="no-business">Select a Business</option>
+              {% for b in businesses %}
+                <option id="{{ b.id }}">{{ b.short_name }}: {{ b.name }}</option>
+              {% endfor %}
+            </select>
+            <p>
+            <select id="submitter_users" type="select" style="display: none;">
+            </select>
+            {% else %}
+            <label><a href="mailto:{{ user.email }}">{{ user.email }}</a></label>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="control-group">
+        <label class="control-label"><strong>Submit Time</strong></label>
+        <div class="controls" style="padding-top: 5px;">
+          {% if workflow_instance %}
+            <label>{{ workflow_instance.created_at }}</label>
+          {% else %}
+            <label>{{ submit_time }} [subject to update]</label>
+          {% endif %}
+        </div>
+      </div>
+      {% for field in formfields %}
+      <div class="control-group">
+        <label class="control-label" for="{{ field.name }}"><strong>{{ field.label }}</strong></label>
+        <div class="controls{% if field.field_type == 'D'%} date{% endif %}">
+            {% if field.field_type == 'T' %}
+                <input id="{{ field.name}}" class="workflow-input" name="{{ field.name }}" type="text" class="input-xlarge" value="{{ field_instances|keyvalue:field.name }}">
+            {% elif field.field_type == 'TA' %}
+                <textarea id="{{ field.name }}" class="workflow-input" name="{{ field.name }}" class="span6" placeholder="{{ field.help }}">{{ field_instances|keyvalue:field.name }}</textarea>
+            {% elif field.field_type == 'D' %}
+                <input id="{{ field.name }}" name="{{ field.name }}" class="workflow-input form-control response-date" type="text" value="{{ field_instances|keyvalue:field.name }}">
+                {% if field.data and field.data.time %}
+                <input id="{{ field.name }}-time" class="workflow-input" name="{{ field.name }}_time" type="text" class="input-xlarge">
+                {% endif %}
+            {% elif field.field_type == 'RI'%}
+                {% for option in field.data %}
+                    <label class="radio inline" for="{{ field.name }}-{{ key }}">
+                      <input type="radio" class="workflow-input" name="{{ field.name }}" id="{{ field.name }}-{{ option.value }}" value="{{ option.value }}"{% if option.selected %}checked="checked"{% endif %}>
+                      {{ option.label }}
+                    </label>
+                {% endfor %}
+            {% endif %}
+            <p class="help-block">{{ field.help }}</p>
+        </div>
+      </div>
+      {% endfor %}
+      <div class="control-group">
+        <label for="file-uploader" class="control-label"><strong>Add Attachment(s)</strong></label>
+        <div id="file-uploader" name="File" class="controls">
+          <noscript>          
+            <p>Please enable JavaScript to use the file uploader.</p>
+          </noscript>
+          <p class="help-block">Drag and drop a file attachment here.</p>
+        </div>       
+      </div>
+      <div class="control-group">
+        <label for="start_workflow" class="control-label"></label>
+        <div id="start_workflow_container" class="controls">
+          {% for t in transitions %}
+            <a id="submit_{{ t.id }}" transition_id={{ t.id }} type="button" class="btn submit_workflow_button {{ t.button_type }}">{{ t.name }}</a>
+          {% endfor %}
+            <a id="cancel_workflow_start" type="button" class="btn btn-inverse" href="/workflow/{{ workflow.id }}/all">Cancel</a>      
+        </div>
+      </div>
+    </form>
+    {% endblock %}
+
+    {% block extrajs %}
+    <script src="{{ STATIC_URL }}ajaxuploader/js/fileuploader.js" ></script>
+    <script src="{{ STATIC_URL }}datepicker/js/bootstrap-datepicker.js" ></script>
+    <script>
+        ATTACHMENTS = {};
+        $(function(){
+        var uploader = new qq.FileUploader({
+            action: "{% url 'workflow_ajax_upload' %}",
+            element: $('#file-uploader')[0],
+            multiple: true,
+            onComplete: function(id, filename, responseJSON) {
+                console.log(id, filename, responseJSON);
+                if(responseJSON.success) {
+                    ATTACHMENTS[responseJSON.file_id] = {'id': id,
+                                                         'filename': filename,
+                                                         'json': responseJSON};
+                } else {
+                    console.log('fail', id, filename, responseJSON);
+                }
+            },
+            onAllComplete: function(uploads) {
+                // uploads is an array of maps
+                // the maps look like this: {file: FileObject, response: JSONServerResponse}
+                // do nothing
+            },
+            params: {
+                'csrf_token': '{{ csrf_token }}',
+                'csrf_name': 'csrfmiddlewaretoken',
+                'csrf_xname': 'X-CSRFToken',
+            },
+        });
+
+        // stuff for datepicker
+        var nowTemp = new Date();
+        var now = new Date(nowTemp.getFullYear(), nowTemp.getMonth(), nowTemp.getDate(), 0, 0, 0, 0);
+        var $mid = $('.response-date').datepicker({
+            onRender: function(date) {
+                return date.valueOf() < now.valueOf() ? 'disabled': '';
+            }
+        }).on('changeDate', function(ev){
+            $mid.hide();
+        }).data('datepicker');
+
+        // stuff for submit button
+        $('.submit_workflow_button').click(
+            function () {
+                // do some validation and grab the data
+                var workflow_data = {'fields': {}},
+                    valid = true,
+                    ctrl, $ctrl;
+
+                {% if workflow_instance %}
+                workflow_data['workflow_instance_id'] = {{ workflow_instance.id }};
+                {% endif %}
+                
+                $.each($('.workflow-input'), 
+                    function (index, ctrl) { 
+                        $ctrl = $(ctrl);
+                        if ($ctrl.is('select')) {
+                            workflow_data['fields'][$ctrl.attr('id')] = $ctrl.find('option:selected').attr('id')
+                        } else {
+                            if ($ctrl.attr('type') == 'radio') {
+                                var name = $ctrl.attr('name');
+                                workflow_data['fields'][name] = $('input[name="' + name + '"]:checked').val();
+                            } else {
+                                workflow_data['fields'][$ctrl.attr('id')] = $ctrl.val();
+                            }
+                        }
+                        if ($ctrl.is(':visible')) {
+                            valid &= $ctrl.val().length > 0;
+                        }
+                    }
+                );
+                if ( !valid ) {
+                    alert('Validation Error: You are missing a required field.');
+                    return;
+                }
+
+                // create data object and POST
+                workflow_data['submitter'] = {'radio': $('input[name="submitter-radios"]:checked').val(),
+                                              'business': $('#business_select').find('option:selected').attr('id'),
+                                              'user': $('#submitter_users').find('option:selected').attr('id')}
+                workflow_data['attachments'] = ATTACHMENTS;
+                workflow_data['transition'] = Number($(this).attr('transition_id'));
+                console.log('workflow_data', workflow_data);
+                
+                $.ajaxSetup({
+                    crossDomain: false, // obviates need for sameOrigin test
+                    beforeSend: function(xhr, settings) {
+                        if (!csrfSafeMethod(settings.type)) {
+                            xhr.setRequestHeader("X-CSRFToken", $.cookie('csrftoken'));
+                        }
+                    }
+                });
+                $.ajax({type: "POST",
+                        url: '/workflow/{{ workflow.id }}/submit',
+                        data: {'workflow_data': JSON.stringify(workflow_data)},
+                        success: function (ret_data) {
+                            console.log('ret_data', ret_data);
+                            window.location = '/workflow/{{ workflow.id }}/open'
+                        },
+                        error: function (ret_data){
+                            alert('Error creating workflow form.  The error has been logged.')
+                        },
+                });
+
+
+            }
+        );
+
+        // stuff to listen on submitter radio button
+        $('input[name="submitter-radios"]').change(
+            function() {
+                if ( $('#submitter-self').attr('checked') ) {
+                    $('#business_select').hide()
+                    $('#submitter_users').hide()
+                } else if ( $('#submitter-other').attr('checked') ){
+                    $('#business_select').show()
+                }
+            }
+        );
+
+        $('input[name="submitter-radios"]').change(
+            function() {
+                if ( $('#submitter-self').attr('checked') ) {
+                    $('#business_select').hide()
+                } else if ( $('#submitter-other').attr('checked') ){
+                    $('#business_select').show()
+                }
+            }
+        );
+
+        $('#business_select').change(
+            function () {
+                $.getJSON('/timepiece/business/' + $(this).find('option:selected').attr('id') + '/get_users',
+                    function (data) {
+                        $('#submitter_users').show()
+                        $('#submitter_users').empty()
+                        $.each(data, function (key, val) {
+                            $('#submitter_users').append('<option id="' + key + '">' + val['name'] + ' (' + val['email'] + ')</option>')
+                        });
+                    }
+                );
+            }
+        );
+
+        $('#submitter_users').change(
+            function () {
+                console.log($(this).find('option:selected').attr('id'));
+            }
+        );
+
+        });
+    </script>
+    {% endblock extrajs %}
+

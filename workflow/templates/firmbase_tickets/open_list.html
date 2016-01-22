@@ -1,0 +1,121 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags %}
+{% load workflow_templatetags %}
+{% load bootstrap_toolkit %}
+{% load url from future %}
+
+{% block title %}FirmBase Tickets{% endblock title %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>FirmBase Tickets</h2>
+            <div style="padding-bottom: 12px;">
+                {% if perms.workflow.add_firmbaseticket %}
+                <a class="btn btn-primary" href="{% url 'create_firmbase_ticket' %}">Create FirmBase Ticket</a>
+                {% endif %}
+                <a class="btn" href="{% url 'list_open_firmbase_tickets' %}">Show Open Tickets</a>
+                <a class="btn" href="{% url 'list_all_firmbase_tickets' %}">Show All Tickets</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span12">
+            <form class='form-inline' accept-charset='UTF-8' method='get' action=''>
+                {{ form|as_bootstrap:"inline" }}
+                <button type='submit' class='btn' name='submit'>Search</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span12">
+            {% load pagination_tags %}
+            {% autopaginate object_list %}
+
+            {% paginate %}
+            <table class='table table-bordered table-striped table-condensed'>
+                <thead>
+                    <tr>
+                        <th>Ticket ID</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Assignee</th>
+                        <th>Actions</th>
+                        <th>Submitter</th>
+                        <th>Submit Time</th>
+                        <th>Last Activity</th>
+                        <th>Scheduled</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fb_ticket in object_list %}
+                        <tr>
+                            <td style="white-space: nowrap;"><a href="{% url 'view_firmbase_ticket' fb_ticket.pk %}">{{ fb_ticket.form_id }}</a></td>
+                            <td style="white-space: nowrap;"><span class="{{ fb_ticket.status.label_style }}">{{ fb_ticket.status }}</span></td>
+                            <td style="text-align: center;">
+                                {% if perms.workflow.change_importance_firmbaseticket %}
+                                <a href="{% url 'change_importance_firmbase_ticket' fb_ticket.id %}">
+                                    <span class="badge {{ fb_ticket.get_importance_class }}">{{ fb_ticket.importance }}</span>
+                                </a>
+                                {% else %}
+                                <span class="badge {{ fb_ticket.get_importance_class }}">{{ fb_ticket.importance }}</span>
+                                {% endif %}
+                                <span class="label label-{{ fb_ticket.priority }}">{{ fb_ticket.get_priority_display }}</span>
+                            </td>
+                            <td style="white-space: nowrap; text-align: center;">
+                                {{ fb_ticket.assignee }}
+                                {% if perms.workflow.change_importance_firmbaseticket %}
+                                <a href="{% url 'change_importance_firmbase_ticket' fb_ticket.id %}">
+                                    <i class="icon-pencil"> </i>
+                                </a>
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap;">
+                                {% if not fb_ticket.status.terminal %}
+                                {% if perms.workflow.edit_firmbaseticket or fb_ticket.submitter == request.user or fb_ticket.created_by == request.user %}
+                                <a class="btn btn-primary" href='{% url "edit_firmbase_ticket" fb_ticket.pk %}'>Edit</a>
+                                {% endif %}
+                                {% endif %}
+                                {% if fb_ticket.next_actions|length > 0 %}
+                                <div class="btn-group">
+                                    <a class="btn dropdown-toggle" data-toggle="dropdown" href="#">
+                                    More
+                                    <span class="caret"></span>
+                                    </a>
+                                    <ul class="dropdown-menu" style="padding: 5px 5px 5px 5px;">
+                                        <a class="btn" href='{% url "view_firmbase_ticket" fb_ticket.pk %}'>View Details</a>
+                                    {% for next_action in fb_ticket.next_actions %}
+                                        {% if next_action.permissions == 'all' %}
+                                            <a class="btn {{ next_action.button_type }}" href="{% url 'transition_firmbase_ticket' fb_ticket.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                        {% elif next_action.permissions == 'guardian' %}
+                                            {% get_obj_perms request.user for next_action as "na_perms" %}
+                                            {% if 'can_execute_transition' in na_perms %}
+                                                <a class="btn {{ next_action.button_type }}" href="{% url 'transition_firmbase_ticket' fb_ticket.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                            {% endif %}
+                                        {% elif next_action.permissions == 'creator' %}
+                                          {% if fb_ticket.submitter == request.user or fb_ticket.created_by == request.user %}
+                                            <a class="btn {{ next_action.button_type }}" href="{% url 'transition_firmbase_ticket' fb_ticket.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                          {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap;">{{ fb_ticket.submitter }}</td>
+                            <td style="white-space: nowrap;">{{ fb_ticket.created_at|date:"j N P" }}</td>
+                            <td style="white-space: nowrap;">{{ fb_ticket.last_activity|date:"j N P" }}</td>
+                            <td style="white-space: nowrap;">{{ fb_ticket.scheduled }}</td>
+                            <td>{{ fb_ticket.description|truncatewords:24 }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% paginate %}
+        </div>
+    </div>
+{% endblock content %}

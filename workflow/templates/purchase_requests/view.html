@@ -1,0 +1,206 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags bootstrap_toolkit humanize %}
+{% load url from future %}
+
+{% block title %}Purchase Request Workflow: {{ object.form_id }}{% endblock title %}
+
+{% block extracss %}
+<link href="{{ STATIC_URL }}ajaxuploader/css/fileuploader.css" media="screen" rel="stylesheet" type="text/css" />
+{% endblock extracss %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="{% url 'list_open_purchase_requests' %}">Open IT Purchase Tickets</a>
+        <span class="divider">/</span><a href="">{{ object.form_id }}</a>
+    </li>
+{% endblock crumbs %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>{{ object.form_id }}</h2>
+            <div>
+                <a class="btn" href="{% url 'list_open_purchase_requests' %}">Back to List</a>
+                {% if perms.workflow.edit_firmbaseticket or object.submitter == request.user or object.created_by == request.user %}
+                    {% if object.status.terminal %}
+                        {% for reopen_action in object.reopen_actions %}
+                            <a class="btn {{ reopen_action.button_type }}" href="{% url 'transition_purchase_request' object.pk %}?transition_id={{ reopen_action.id }}">{{ reopen_action.name }}</a>`
+                        {% endfor %}
+                    {% else %}
+                        <a class="btn btn-primary" href='{% url "edit_purchase_request" object.pk %}'>Edit</a>
+                    {% endif %}
+                {% endif %}
+                {% if not object.status.terminal and perms.workflow.assign_purchase_request %}
+                    <a class="btn btn-primary" href='{% url "assign_purchase_request" object.pk %}'>Assign</a>
+                {% endif %}
+                {% for next_action in object.next_actions %}
+                    {% if next_action.permissions == 'all' %}
+                        <a class="btn {{ next_action.button_type }}" href="{% url 'transition_purchase_request' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                    {% elif next_action.permissions == 'guardian' %}
+                        {% get_obj_perms request.user for next_action as "na_perms" %}
+                        {% if 'can_execute_transition' in na_perms %}
+                            <a class="btn {{ next_action.button_type }}" href="{% url 'transition_purchase_request' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                        {% endif %}
+                    {% elif next_action.permissions == 'creator' %}
+                      {% if object.submitter == request.user or object.created_by == request.user %}
+                        <a class="btn {{ next_action.button_type }}" href="{% url 'transition_purchase_request' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                      {% endif %}
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span5">
+            <h3>Current Ticket Details</h3>
+            <table class="table table-condensed table-hover table-bordered">
+                <tr><th>Form ID</th><td>{{ object.form_id }}</td></tr>
+                <tr><th>Submit Time</th><td>{{ object.created_at }}</td></tr>
+                <tr><th>Submitter</th><td>{{ object.submitter }}</td></tr>
+                <tr><th>Creator</th><td>{{ object.created_by }}</td></tr>
+                <tr><th>Last Edited By</th><td>{{ object.last_user }}</td></tr>
+                <tr><th>Last Activity</th><td>{{ object.last_activity }}</td></tr>
+                <tr><th>Assigned To</th><td>{{ object.assignee }}</td></tr>
+                <tr><th>Description</th><td>{{ object.description|linebreaks }}</td></tr>
+                <tr><th>Type</th><td>{{ object.get_type_display }}</td></tr>
+                <tr>
+                    <th>Amount</th>
+                    <td>{% if object.amount %}
+                            $ {{ object.amount|floatformat:2|intcomma }}
+                        {% else %}
+                            TBD
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr><th>Approval</th><td>{{ object.mgmt_approver }} @ {{ object.mgmt_approval_date }}</td></tr>
+                <tr><th>Approval Note</th><td>{{ object.mgmt_approval }}</td></tr>
+                <tr><th>Estimated Delivery Date</th><td>{{ object.estimated_delivery_date }}</td></tr>
+                <tr><th>Package Carrier</th><td>{{ object.get_package_carrier_display }}</td></tr>
+                <tr><th>Tracking Number</th><td>{{ object.tracking_number }}</td></tr>
+                <tr><th>Package Location</th><td>{{ object.package_location }}</td></tr>
+            </table>
+
+            <div id="ticket-history" style="margin-top:12px;">
+            <div class="accordion" id="accordion2">
+            <div class="accordion-group">
+                <div class="accordion-heading">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseOne">Ticket History Summary</a>
+                </div>
+                <div id="collapseOne" class="accordion-body collapse">
+                    <div class="accordion-inner">      
+                    {% for th in ticket_history %}
+                        <blockquote>
+                            <p>Moved ticket to {{ th.status.name }}.</p>
+                            <small>{{ th.last_user }} @ {{ th.last_activity }}</small>
+                        </blockquote>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-group">
+                <div class="accordion-heading">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseTwo">Ticket History Details</a>
+                </div>
+                <div id="collapseTwo" class="accordion-body collapse">
+                    <div class="accordion-inner">      
+                    {% for th in ticket_history %}
+                    <dl class="dl-horizontal">
+                        <dt>Update Time:</dt><dd>{{ th.last_activity }}</dd>
+                        <dt>Ticket ID:</dt><dd>{{ th.form_id }}</dd>
+                        <dt>Status:</dt><dd>{{ th.status }}</dd>
+                        <dt>Submit Time:</dt><dd>{{ th.created_at }}</dd>
+                        <dt>Submitter:</dt><dd>{{ th.submitter }}</dd>
+                        <dt>Creator:</dt><dd>{{ th.created_by }}</dd>
+                        <dt>Assigned to:</dt><dd>{{ th.assignee }}</dd>
+                        <dt>Description:</dt><dd>{{ th.description|linebreaks }}</dd>
+                        <dt>Requested Response Date:</dt><dd>{{ th.requested_date }}</dd>
+                        <dt>Response:</dt><dd>{% if th.response %}{{ th.response|linebreaks }}{% else %}(TBD){% endif %}</dd>
+                        {% if th.mgmt_approver %}
+                        <dt>Management Approval:</dt><dd>{{ th.mgmt_approver }} at {{ th.mgmt_approval_date }}</dd>
+                        {% else %}
+                        <dt>Management Approval:</dt><dd>N/A</dd>
+                        {% endif %}
+                    </dl>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+            </div>
+            </div>
+        </div>
+        {% url 'view_purchase_request' object.id as next_url %}
+        <div class="span3">
+            <h3>Notes</h3>
+            <form class="form-inline" action="{% url 'add_purchase_request_note' object.id %}?next={{ next_url }}" method="post" accept-charset="utf-8">
+                {% csrf_token %}
+                {{ add_purchase_request_note_form|as_bootstrap }}
+                <input class="btn btn-primary" type="submit" value="Add" />
+            </form>
+            {% if object.get_notes|length %}
+            <ul>
+                {% for note in object.get_notes %}
+                <li><strong>{{ note.author }} @ {{ note.last_edited }}</strong><br/>{{ note.text|linebreaks }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <em>There are currently no notes for this ticket.</em>
+            {% endif %}
+            
+        </div>
+        <div class="span3">
+            <h3>Attachments</h3>
+            <div id="file-uploader" name="File" class="controls">
+              <noscript>          
+                <p>Please enable JavaScript to use file uploader.</p>
+              </noscript>
+            </div>
+            <small>Drag and drop a file above to attach it.</small>
+            {% if object.get_attachments|length %}
+            {% for attachment in object.get_attachments %}
+            <blockquote>
+            <p><a href="{% url 'download_purchase_request_attachment' attachment.file_id %}" target="_blank">{{ attachment.filename }}</a></p>
+            <small>{{ attachment.uploader }} @ {{ attachment.upload_time }}</small>
+            </blockquote>
+            {% endfor %}
+            {% else %}
+            <br/><em>There are no attachments for this ticket yet.</em>
+            {% endif %}
+        </div>
+    </div>
+{% endblock content %}
+
+{% block extrajs %}
+<script src="{{ STATIC_URL }}ajaxuploader/js/fileuploader.js" ></script>
+<script>
+    ATTACHMENTS = {};
+    $(function(){
+    var uploader = new qq.FileUploader({
+        action: "{% url 'add_purchase_request_attachment' object.id %}",
+        element: $('#file-uploader')[0],
+        multiple: true,
+        onComplete: function(id, filename, responseJSON) {
+            if(responseJSON.success) {
+                ATTACHMENTS[id] = {'id': id,
+                                   'filename': filename,
+                                   'json': responseJSON};
+            } else {
+                console.log('fail', id, filename, responseJSON);
+            }
+        },
+        onAllComplete: function(uploads) {
+            // uploads is an array of maps
+            // the maps look like this: {file: FileObject, response: JSONServerResponse}
+            // do nothing
+        },
+        params: {
+            'csrf_token': '{{ csrf_token }}',
+            'csrf_name': 'csrfmiddlewaretoken',
+            'csrf_xname': 'X-CSRFToken',
+        },
+    });
+    });
+</script>
+{% endblock extrajs %}

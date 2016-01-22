@@ -1,0 +1,175 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags %}
+{% load workflow_templatetags %}
+{% load bootstrap_toolkit %}
+{% load url from future %}
+
+{% block title %}IT Tickets{% endblock title %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="">IT Tickets List</a>
+    </li>
+{% endblock crumbs %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>IT Tickets</h2>
+            <div style="padding-bottom: 12px;">
+                {% if perms.workflow.add_firmbaseticket %}
+                    <a class="btn btn-primary" href="{% url 'create_it_ticket' %}">Create IT Ticket</a>
+                {% endif %}
+                <a class="btn btn-success" href="{% url 'list_my_it_tickets' %}">Show My Tickets</a>
+                <a class="btn" href="{% url 'list_open_it_tickets' %}">Show Open Tickets</a>
+                <a class="btn" href="{% url 'list_all_it_tickets' %}">Show All Tickets</a>
+            </div>
+        </div>
+    </div>
+    {% if form %}
+    <div class="row-fluid">
+        <div class="span12">
+            <form class='form-inline' accept-charset='UTF-8' method='get' action=''>
+                {{ form|as_bootstrap:"inline" }}
+                <button type='submit' class='btn' name='submit'>Search</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+    {% if perms.workflow.view_user_itticket %}
+    <div class="row-fluid">
+        <div class="span12">
+            <form class='form-inline' accept-charset='UTF-8' method='get' action='{% url "list_user_it_tickets" %}'>
+                {{ user_form|as_bootstrap:"inline" }}
+                <button type='submit' class='btn' name='user_tickets'>Show Tickets</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row-fluid">
+        <div class="span12">
+            {% load pagination_tags %}
+            {% autopaginate object_list %}
+
+            {% paginate %}
+            <table class='table table-bordered table-striped table-condensed'>
+                <thead>
+                    <tr>
+                        <th>Ticket ID</th>
+                        {% if request.user.id == 5 or request.user.id == 5 %}
+                        <th>Calc</th>
+                        {% endif %}
+                        <th>Priority</th>
+                        {% if form == None %}
+                        <th>Required Effort</th>
+                        {% endif %}
+                        <th>Total Effort</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                        <th>Submit</th>
+                        <th>Response Requested</th>
+                        <th>Assigned To</th>
+                        <th>Last Activity</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for it_ticket in object_list %}
+                        <tr>
+                            <td style="white-space: nowrap"><a href="{% url 'view_it_ticket' it_ticket.pk %}">{{ it_ticket.form_id }}</a></td>
+                            {% if request.user.id == 5 or request.user.id == 5 %}
+                            <td style="white-space: nowrap">{{ it_ticket.weighted_priority }}</td>
+                            {% endif %}
+                            {% if form == None %}
+                            <td style="white-space: nowrap; text-align: center;">
+                                <span class="badge badge-{{ it_ticket.priority }}">{{ forloop.counter }}</span><br/>
+                                <span class="label label-{{ it_ticket.priority }}">{{ it_ticket.get_priority_display }}</span>
+                            </td>
+                            <td style="white-space: nowrap"><span>{{ it_ticket.hours_per_day }} hrs/day</span></td>
+                            {% else %}
+                            <td style="white-space: nowrap ;text-align: center;">
+                                <span class="label label-{{ it_ticket.priority }}">{{ it_ticket.get_priority_display }}</span>
+                            </td>
+                            {% endif %}
+                            <td style="white-space: nowrap">
+                                {% if it_ticket.effort %}
+                                    {{ it_ticket.effort }} hrs
+                                {% else %}
+                                    TBD
+                                {% endif %}
+
+                                {% if it_ticket.mgmt_effort = it_ticket.effort %}
+                                    <i class="icon-ok-sign" title="Management has approved this level of effort."> </i>
+                                {% else %}
+                                    {% if perms.workflow.approve_itticket_effort %}
+                                        <a href="{% url 'approve_it_ticket_effort' it_ticket.id %}?next={{ request.get_full_path }}">
+                                            <i class="icon-thumbs-up" title="Approve this level of effort."> </i>
+                                        </a>
+                                        <a href="{% url 'admin_edit_it_ticket' it_ticket.id %}?next={{ request.get_full_path }}">
+                                            <i class="icon-thumbs-down" title="Change the level of effort."> </i>
+                                        </a>
+                                    {% else %}
+                                        <i class="icon-question-sign" title="Management has not yet approved this effort estimate."> </i>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap"><span class="label {{ it_ticket.status.label_style}}">{{ it_ticket.status }}</span></td>
+                            <td style="white-space: nowrap">
+                                {% if perms.workflow.edit_firmbaseticket or it_ticket.submitter == request.user or it_ticket.created_by == request.user %}
+                                    {% if not it_ticket.status.terminal %}
+                                        <a class="btn btn-primary btn-small" href='{% url "edit_it_ticket" it_ticket.pk %}'><i class="icon-pencil icon-white"></i> Edit</a>
+                                    {% else %}
+                                        {% for reopen_action in it_ticket.reopen_actions %}
+                                            <a class="btn {{ reopen_action.button_type }} btn-small" href="{% url 'transition_it_ticket' it_ticket.pk %}?transition_id={{ reopen_action.id }}">{{ reopen_action.name }}</a>`
+                                        {% endfor %}
+                                    {% endif %}
+                                {% endif %}
+                                {% if perms.workflow.change_itticket %}
+                                    <a class="btn btn-primary btn-small" href='{% url "admin_edit_it_ticket" it_ticket.pk %}'><i class="icon-pencil icon-white"></i> Admin Edit</a>
+                                {% endif %}
+                                {% if it_ticket.next_actions|length > 0 %}
+                                <div class="btn-group">
+                                    <a class="btn btn-small dropdown-toggle" data-toggle="dropdown" href="#">
+                                    More
+                                    <span class="caret"></span>
+                                    </a>
+                                    <ul class="dropdown-menu" style="padding: 5px 5px 5px 5px;">
+                                    {% for next_action in it_ticket.next_actions %}
+                                        {% if next_action.permissions == 'all' %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_it_ticket' it_ticket.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                        {% elif next_action.permissions == 'guardian' %}
+                                            {% get_obj_perms request.user for next_action as "na_perms" %}
+                                            {% if 'can_execute_transition' in na_perms %}
+                                                <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_it_ticket' it_ticket.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                            {% endif %}
+                                        {% elif next_action.permissions == 'creator' %}
+                                          {% if it_ticket.submitter == request.user or it_ticket.created_by == request.user %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_it_ticket' it_ticket.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                          {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap">{{ it_ticket.submitter }} @<br/>{{ it_ticket.created_at|date:"N j, P" }}</td>
+                            <td style="white-space: nowrap">{{ it_ticket.requested_date }}</td>
+                            <td style="white-space: nowrap">
+                                {{ it_ticket.assignee }}
+                                {% if not it_ticket.status.terminal and perms.workflow.assign_it_ticket %}
+                                    <a class="btn btn-mini" href='{% url "assign_it_ticket" it_ticket.pk %}' title="Change assigned user"><i class="icon-pencil"></i> </a>
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap">{{ it_ticket.last_user }} @<br/>{{ it_ticket.last_activity|date:"N j, P" }}</td>
+                            <td>{{ it_ticket.description|truncatewords:12 }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% paginate %}
+        </div>
+    </div>
+{% endblock content %}

@@ -1,0 +1,293 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags %}
+{% load bootstrap_toolkit %}
+{% load url from future %}
+{% load timepiece_tags bootstrap_toolkit %}
+
+{% block extracss %}
+<link href="{{ STATIC_URL }}ajaxuploader/css/fileuploader.css" media="screen" rel="stylesheet" type="text/css" />
+{% endblock extracss %}
+
+{% block title %}General Task: {{ object.form_id }}{% endblock title %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="{% url 'list_open_general_tasks' %}">Open General Tasks</a>
+        <span class="divider">/</span><a href="">{{ object.form_id }}</a>
+    </li>
+{% endblock crumbs %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>{{ object.form_id }}</h2>
+            <div>
+                <a class="btn" href="{% url 'list_my_general_tasks' %}">Back to List</a>
+                {% if perms.workflow.edit_generaltask or object.created_by == request.user %}
+                    {% if object.status.terminal %}
+                        {% for reopen_action in object.reopen_actions %}
+                            <a class="btn {{ reopen_action.button_type }}" href="{% url 'transition_general_task' object.pk %}?transition_id={{ reopen_action.id }}">{{ reopen_action.name }}</a>`
+                        {% endfor %}
+                    {% else %}
+                        <a class="btn btn-primary" href='{% url "edit_general_task" object.pk %}'>Edit</a>
+                    {% endif %}
+                {% endif %}
+                {% if perms.workflow.change_generaltask %}
+                    <a class="btn btn-primary" href='{% url "admin_edit_general_task" object.pk %}'>Admin Edit</a>
+                {% endif %}
+                {% if not object.status.terminal and perms.workflow.assign_general_task %}
+                    <a class="btn btn-primary" href='{% url "assign_general_task" object.pk %}'>Assign</a>
+                {% endif %}
+                {% if request.user in object.users.all and perms.entries.add_entry %}
+                    {% if clocked_in %}
+                        <a class="btn btn-inverse" href='{% url "clock_out_general_task" object.pk %}'>Clock-Out</a>
+                        <a class="btn btn-inverse" href='{% url "clock_in" %}'>Switch Time</a>
+                    {% else %}
+                        <a class="btn btn-success" href='{% url "clock_in_general_task" object.pk %}'>Clock-In</a>
+                    {% endif %}
+                {% endif %}
+                {% for next_action in object.next_actions %}
+                    {% if next_action.permissions == 'all' %}
+                        <a class="btn {{ next_action.button_type }}" href="{% url 'transition_general_task' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                    {% elif next_action.permissions == 'guardian' %}
+                        {% get_obj_perms request.user for next_action as "na_perms" %}
+                        {% if 'can_execute_transition' in na_perms %}
+                            <a class="btn {{ next_action.button_type }}" href="{% url 'transition_general_task' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                        {% endif %}
+                    {% elif next_action.permissions == 'creator' %}
+                      {% if object.created_by == request.user %}
+                        <a class="btn {{ next_action.button_type }}" href="{% url 'transition_general_task' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                      {% endif %}
+                    {% elif next_action.permissions == 'assignee' %}
+                      {% if object.assignee == request.user %}
+                        <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                      {% endif %}
+                    {% elif next_action.permissions == 'guardiancreator' %}
+                      {% get_obj_perms request.user for next_action as "na_perms" %}
+                      {% if 'can_execute_transition' in na_perms or object.created_by == request.user %}
+                        <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                      {% endif %}
+                    {% elif next_action.permissions == 'guardianassignee' %}
+                      {% get_obj_perms request.user for next_action as "na_perms" %}
+                      {% if 'can_execute_transition' in na_perms or object.assignee == request.user %}
+                        <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_general_task' object.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                      {% endif %}
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="offset1 span5">
+            <h3>Details</h3>
+            <dl class="dl-horizontal">
+                <dt style="white-space: nowrap">Ticket ID:</dt><dd>{{ object.form_id }}</dd>
+                <dt>Status:</dt><dd><span class="label {{ object.status.label_style}}">{{ object.status }}</span></dd>
+                {% if object.project %}
+                <dt>Project</dt><dd><a href="{% url 'view_project' object.project.id %}" target="_blank">{{ object.project }}</a></dd>
+                {% endif %}
+                {% if object.lead %}
+                <dt>Lead</dt><dd><a href="{% url 'view_lead' object.lead.id %}" target="_blank">{{ object.lead }}</a></dd>
+                {% endif %}
+                {% if object.contract %}
+                <dt>Contract</dt><dd><a href="{% url 'view_contract' object.contract.id %}" target="_blank">{{ object.contract }}</a></dd>
+                {% endif %}
+                <dt>Creator:</dt><dd>{{ object.created_by }}</dd>
+                <dt>Submitter:</dt><dd>{{ object.submitter }}</dd>
+                <dt>Create Time:</dt><dd>{{ object.created_at }}</dd>
+                <dt>Assigned to:</dt><dd>{{ object.assignee }} </dd>
+                <dt>Description:</dt><dd>{{ object.description|linebreaks }}</dd>
+                <dt style="white-space: nowrap">Requested Date:</dt><dd>{{ object.requested_date }}</dd>
+                <dt>Scheduled:</dt><dd>{% if object.scheduled %}{{ object.scheduled|date }}{% else%}(TBD){% endif %}</dd>
+                <dt>Effort:</dt><dd>{{ object.effort }} hours</dd>
+                <dt>Response:</dt><dd>{% if object.response %}{{ object.response|linebreaks }}{% else %}(TBD){% endif %}</dd>
+            </dl>
+
+            <div id="ticket-history" style="margin-top:12px;">
+            <div class="accordion" id="accordion2">
+            
+            <div class="accordion-group">
+                <div class="accordion-heading">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseOne">Total Hours Spent: {{ object.get_total_hours }} hours</a>
+                </div>
+                <div id="collapseOne" class="accordion-body collapse">
+                    <div class="accordion-inner">      
+                    {% for entry in object.entries.all %}
+                        <blockquote>
+                            <p>{{ entry.user }}: {{ entry.start_time|date }}, {{ entry.hours }} hours</p>
+                            <small>{{ entry.comments }}</small>
+                        </blockquote>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-group">
+                <div class="accordion-heading">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseTwo">Ticket History Summary</a>
+                </div>
+                <div id="collapseTwo" class="accordion-body collapse">
+                    <div class="accordion-inner">      
+                    {% for th in ticket_history %}
+                        <blockquote>
+                            <p>Moved ticket to {{ th.status.name }}.</p>
+                            <small>{{ th.last_user }} @ {{ th.last_activity }}</small>
+                        </blockquote>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="accordion-group">
+                <div class="accordion-heading">
+                    <a class="accordion-toggle" data-toggle="collapse" data-parent="#accordion2" href="#collapseThree">Ticket History Details</a>
+                </div>
+                <div id="collapseThree" class="accordion-body collapse">
+                    <div class="accordion-inner">      
+                    {% for th in ticket_history %}
+                    <dl class="dl-horizontal">
+                        <dt>Update Time:</dt><dd>{{ th.last_activity }}</dd>
+                        <dt>Ticket ID:</dt><dd>{{ th.form_id }}</dd>
+                        <dt>Status:</dt><dd>{{ th.status }}</dd>
+                        <dt>Creator:</dt><dd>{{ th.created_by }}</dd>
+                        <dt>Submitter:</dt><dd>{{ th.submitter }}</dd>
+                        <dt>Create Time:</dt><dd>{{ th.created_at }}</dd>
+                        <dt>Assigned to:</dt><dd>{{ th.assignee }}</dd>
+                        <dt>Description:</dt><dd>{{ th.description|linebreaks }}</dd>
+                        <dt>Requested Response Date:</dt><dd>{{ th.requested_date }}</dd>
+                        <dt>Response:</dt><dd>{% if th.response %}{{ th.response|linebreaks }}{% else %}(TBD){% endif %}</dd>
+                        {% if th.mgmt_approver %}
+                        <dt>Management Approval:</dt><dd>{{ th.mgmt_approver }} at {{ th.mgmt_approval_date }}</dd>
+                        {% else %}
+                        <dt>Management Approval:</dt><dd>N/A</dd>
+                        {% endif %}
+                    </dl>
+                    {% endfor %}
+                    </div>
+                </div>
+            </div>
+            </div>
+            </div>
+
+        </div>
+        {% url 'view_general_task' object.id as next_url %}
+        <div class="span3">
+            <h3>Notes</h3>
+            <form class="form-inline" action="{% url 'add_general_task_note' object.id %}?next={{ next_url }}" method="post" accept-charset="utf-8">
+                {% csrf_token %}
+                {{ add_general_task_note_form|as_bootstrap }}
+                <input class="btn btn-primary" type="submit" value="Add" />
+            </form>
+            <ul>
+                {% for note in object.get_notes %}
+                <li><strong>{{ note.author }} @ {{ note.last_edited }}</strong><br/>{{ note.text|linebreaks }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div class="span3">
+            <h3>Tags</h3>
+            <div><a href="{% url 'general_task_metadata_tags' object.id %}" target="_blank">Add Metadata Tags</a></div>
+            <div id="tags">
+            {% if object.tags.all|length %}
+            {% for tag in object.tags.all %}
+            <span class="label label-info">
+                <a href="{% url 'similar_items' tag.id %}"> <i class="icon-magnet icon-white icon-small"> </i></a>
+                {{ tag }}
+                {% if is_it_admin or request.user.is_superuser %}
+                <a class="remove_tag"> <i class="icon-remove icon-white icon-small"> </i></a>
+                {% endif %}
+            </span>
+            {% endfor %}
+            {% else %}
+            <br/><em>There are no tags for this ticket yet.</em>
+            {% endif %}
+            </div>
+            <form id="add_tag_form">
+                <div style="margin-top: 12px;">
+                    <input id="new_tag" type="text" />
+                    <input id="add_tag_button" class="btn btn-primary" type="submit" value="Add" />
+                </div>
+            </form>
+
+            <h3>Attachments</h3>
+            <div id="file-uploader" name="File" class="controls">
+              <noscript>          
+                <p>Please enable JavaScript to use file uploader.</p>
+              </noscript>
+              <p class="help-block">Drag and drop a file (PDF) of the memo here.</p>
+            </div>
+            {% for attachment in object.get_attachments %}
+            <blockquote>
+            <p><a href="{% url 'download_general_task_attachment' attachment.file_id %}" target="_blank">{{ attachment.filename }}</a></p>
+            <small>{{ attachment.uploader }} @ {{ attachment.upload_utc }}</small>
+            </blockquote>
+            {% endfor %}
+
+            {% url 'view_general_task' object.id as next_url %}
+            <h3>Users</h3>
+            <ul class="users">
+                {% for user in object.users.all %}
+                    <li>
+                        {{ user.get_name_or_username }}
+                        {% if perms.workflow.add_user_generaltask %}
+                            {% with caption="Remove "|add:user.get_name_or_username|add:" from "|add:object.form_id %}
+                                <a title="{{ caption }}" href="{% url 'general_task_remove_user' object.id user.id%}?next={{ next_url|add_parameters:request.GET|urlencode }}"><i alt="{{ caption }}" class="icon-remove"></i></a>
+                            {% endwith %}
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+            {% if perms.workflow.add_user_generaltask %}
+                <form class="form-inline" action="{% url 'general_task_add_user' object.id %}?next={{ next_url|add_parameters:request.GET|urlencode }}" method="post" accept-charset="utf-8">
+                    {% csrf_token %}
+                    {{ add_user_form|as_bootstrap:"inline" }}
+                    <input class="btn" type="submit" value="Add" />
+                </form>
+            {% endif %}
+        </div>
+    </div>
+{% endblock content %}
+
+{% block extrajs %}
+<script src="{{ STATIC_URL }}ajaxuploader/js/fileuploader.js" ></script>
+<script src="{{ STATIC_URL }}project-toolbox/js/tags.js" ></script>
+<script>
+        ATTACHMENTS = {};
+        $(function(){
+        var uploader = new qq.FileUploader({
+            action: "{% url 'add_general_task_attachment' object.id %}",
+            element: $('#file-uploader')[0],
+            multiple: true,
+            onComplete: function(id, filename, responseJSON) {
+                if(responseJSON.success) {
+                    ATTACHMENTS[id] = {'id': id,
+                                       'filename': filename,
+                                       'json': responseJSON};
+                } else {
+                    console.log('fail', id, filename, responseJSON);
+                }
+            },
+            onAllComplete: function(uploads) {
+                // uploads is an array of maps
+                // the maps look like this: {file: FileObject, response: JSONServerResponse}
+                // do nothing
+            },
+            params: {
+                'csrf_token': '{{ csrf_token }}',
+                'csrf_name': 'csrfmiddlewaretoken',
+                'csrf_xname': 'X-CSRFToken',
+            },
+        });
+        });
+
+    $(document).ready(
+        function () {
+            create_remove_tag_handler("{% url 'remove_general_task_tag' object.id %}");
+            create_add_tag_handler("{% url 'general_task_tags' object.id %}");
+        }
+    );
+</script>
+{% endblock extrajs %}

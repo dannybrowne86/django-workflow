@@ -1,0 +1,127 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags %}
+{% load workflow_templatetags %}
+{% load bootstrap_toolkit %}
+{% load url from future %}
+
+{% block title %}Service Requests{% endblock title %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="">Service Request List</a>
+    </li>
+{% endblock crumbs %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>Service Requests</h2>
+            <div style="padding-bottom: 12px;">
+                {% if perms.workflow.add_requestforengineering %}
+                    <a class="btn btn-primary" href="{% url 'create_rfe' %}">Submit Service Request</a>
+                {% endif %}
+                <a class="btn" href="{% url 'list_open_rfes' %}">Show Open SRs</a>
+                <a class="btn" href="{% url 'list_all_rfes' %}">Show All SRs</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span12">
+            <form class='form-inline' accept-charset='UTF-8' method='get' action=''>
+                {{ form|as_bootstrap:"inline" }}
+                <button type='submit' class='btn' name='submit'>Search</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span12">
+            {% load pagination_tags %}
+            {% autopaginate object_list %}
+
+            {% paginate %}
+            <table class='table table-bordered table-striped table-condensed'>
+                <thead>
+                    <tr>
+                        <th style="white-space: nowrap">Support Request ID</th>
+                        <th style="white-space: nowrap">Status</th>
+                        <th style="white-space: nowrap">Actions</th>
+                        <th style="white-space: nowrap">Submit</th>
+                        <th style="white-space: nowrap">Assigned to</th>
+                        <th style="white-space: nowrap">Last Activity</th>
+                        <th>Description</th>
+                        <th>Response Required By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rfe in object_list %}
+                        <tr>
+                            <td style="white-space: nowrap"><a href="{% url 'view_rfe' rfe.pk %}">{{ rfe.form_id }}</a></td>
+                            <td style="white-space: nowrap"><span class="{{ rfe.status.label_style }}">{{ rfe.status }}</span></td>
+                            <td style="white-space: nowrap">
+                                {% if not rfe.status.terminal %}
+                                {% if perms.workflow.edit_firmbaseticket or rfe.submitter == request.user or rfe.created_by == request.user %}
+                                <a class="btn btn-primary btn-small" href='{% url "edit_rfe" rfe.pk %}'>Edit</a>
+                                {% endif %}
+                                {% endif %}
+                                {% if rfe.next_actions|length > 2 %}
+                                <div class="btn-group">
+                                    <a class="btn btn-small dropdown-toggle" data-toggle="dropdown" href="#">
+                                    More
+                                    <span class="caret"></span>
+                                    </a>
+                                    <ul class="dropdown-menu" style="padding: 5px 5px 5px 5px;">
+                                    {% for next_action in rfe.next_actions %}
+                                        {% if next_action.permissions == 'all' %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_rfe' rfe.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                        {% elif next_action.permissions == 'guardian' %}
+                                            {% get_obj_perms request.user for next_action as "na_perms" %}
+                                            {% if 'can_execute_transition' in na_perms %}
+                                                <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_rfe' rfe.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                            {% endif %}
+                                        {% elif next_action.permissions == 'creator' %}
+                                          {% if rfe.submitter == request.user or rfe.created_by == request.user %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_rfe' rfe.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                          {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    </ul>
+                                </div>
+                                {% else %}
+                                {% for next_action in rfe.next_actions %}
+                                    {% if next_action.permissions == 'all' %}
+                                        <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_rfe' rfe.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                    {% elif next_action.permissions == 'guardian' %}
+                                        {% get_obj_perms request.user for next_action as "na_perms" %}
+                                        {% if 'can_execute_transition' in na_perms %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_rfe' rfe.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                        {% endif %}
+                                    {% elif next_action.permissions == 'creator' %}
+                                      {% if rfe.submitter == request.user or rfe.created_by == request.user %}
+                                        <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_rfe' rfe.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                      {% endif %}
+                                    {% endif %}
+                                {% endfor %}
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap">{{ rfe.submitter }} @ {{ rfe.created_at|date:"N j, P" }}</td>
+                            <td style="white-space: nowrap">
+                                {{ rfe.assignee }}
+                                {% if not rfe.status.terminal and perms.workflow.assign_rfe %}
+                                    <a class="btn btn-mini" href='{% url "assign_rfe" rfe.pk %}' title="Change assigned user"><i class="icon-pencil"></i> </a>
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap">{{ rfe.last_user }} @ {{ rfe.last_activity|date:"N j, P" }}</td>
+                            <td>{{ rfe.description|truncatewords:12 }}</td>
+                            <td style="white-space: nowrap">{{ rfe.response_required_by }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% paginate %}
+        </div>
+    </div>
+{% endblock content %}

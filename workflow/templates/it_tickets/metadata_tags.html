@@ -1,0 +1,252 @@
+{% extends "metabase.html" %}
+{% load url from future %}
+
+{% block title %}FirmBase {{ it_ticket.form_id }} Metadata Tags{% endblock title %}
+
+{% block navbar %}
+    {% include "nav.html" %}
+{% endblock navbar %}
+
+{% block basecontent %}
+<div id="content" class="container-fluid">
+    <div id="messages"></div>
+    <form id="metadata_form" class="form-horizontal">
+        {% csrf_token %}
+        <legend>Select Metadata Tags for {{ it_ticket.form_id}}</legend>
+        <div class="control-group">
+            <label class="control-label" for="level1">Main Tag</label>
+            <div class="controls">
+                <select id="level1" name="level1" class="input-xlarge">
+                    <option value=''>---</option>
+                    <option value='it-admin'>Administrative</option>
+                    <option value='it-software'>Software</option>
+                    <option value='it-hardware'>Hardware</option>
+                    <option value='it-other'>Other</option>
+                </select>
+            </div>
+        </div>
+        <div class="control-group">
+            <label class="control-label" for="level2">AAC or Client?</label>
+            <div class="controls">
+                <select id="level2" name="level2" class="input-xlarge">
+                    <option value=''>---</option>
+                    <option value='aac'>AAC</option>
+                    <option value='client'>Client</option>
+                </select>
+            </div>
+        </div>
+        <div id="submit-button-container" class="control-group">
+            <label class="control-label" for="submit-button"></label>
+            <div class="controls">
+                <input type="submit" value="Save" id="submit-button" name="submit-button" class="btn btn-primary" />
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock basecontent %}
+
+{% block extrajs %}
+<script>
+function set_level3_options() {
+    var level1 = $('#level1').val()
+    var level2 = $('#level2').val()
+
+    var biz_options = '';
+    if ($('#level2').val()=='client') {
+        if ($('#client-choice').length==0) {
+            $.getJSON('{% url "get_business_list" %}',
+                function (data) {
+                    $.each(data, function(i, val) {
+                        biz_options += '<option value="' + val.short_name + '">' + val.short_name + ' (' + val.name + ')</option>';
+                    });
+                    var html = '<div id="client-choice" class="control-group">' +
+                                   '<label class="control-label" for="client">Client</label>' +
+                                   '<div class="controls">' +
+                                       '<select id="client" name="client" class="input-xlarge">' +
+                                           '<option value="">---</option>' +
+                                           biz_options +
+                                        '</select>' +
+                                    '</div>' +
+                                '</div>';
+                    $(html).insertBefore('#submit-button-container');
+                    //$('#metadata_form').append(html);
+                }
+            );
+        }
+    } else {
+        $('#client-choice').remove();
+    }
+
+    var l3options = '';
+    if ($('#level1').val() == 'it-other') {
+        $('#level3cont').remove();
+        if ($('#level2').val() == 'aac') {
+            $('#client-choice').remove();
+        }
+        var html = '<div id="level3cont" class="control-group">' +
+                       '<label class="control-label" for="controls">Tag</label>' +
+                       '<div class="controls">' +
+                           '<input id="other" type="text" name="other" class="input-xlarge" placeholder="(enter Other)" />' +
+                        '</div>' +
+                    '</div>';
+        $(html).insertBefore('#submit-button-container');
+    } else if ($('#level1').val() == 'it-software') {
+        $('#level3cont').remove();
+        l3options = '<option value="FirmBase">FirmBase</option>' +
+                    '<option value="Google Apps">Google Apps</option>' +
+                    '<option value="Chrome">Chrome</option>' +
+                    '<option value="Safari">Safari</option>' +
+                    '<option value="Preview">Preview</option>' +
+                    '<option value="Adobe Reader">Adobe Reader</option>' +
+                    '<option value="OSX">OSX</option>' +
+                    '<option value="MS Office">Microsoft Office</option>' +
+                    '<option value="Windows">Windows</option>' +
+                    '<option value="Server">Server</option>' +
+                    '<option value="other">Other</option>';
+        var html = '<div id="level3cont" class="control-group">' +
+                       '<label class="control-label" for="level3">Software</label>' +
+                       '<div class="controls">' +
+                           '<select id="level3" name="level3" class="input-xlarge">' +
+                               '<option value="">---</option>' +
+                               l3options +
+                            '</select>' +
+                            '<input id="other" type="text" name="other" class="input-xlarge" placeholder="(enter Software if Other)" />' +
+                        '</div>' +
+                    '</div>';
+        $(html).insertBefore('#submit-button-container');
+        //$('#metadata_form').append(html);
+    } else if ($('#level1').val() == 'it-hardware') {
+        $('#level3cont').remove();
+        l3options = '<option value="Monitor">Monitor</option>' +
+                    '<option value="Mac">Mac</option>' +
+                    '<option value="PC">PC</option>' +
+                    '<option value="Printer">Printer</option>' +
+                    '<option value="Peripheral">Peripheral</option>' +
+                    '<option value="Network">Network</option>' +
+                    '<option value="Phone">Phone</option>' +
+                    '<option value="Server">Server</option>' +
+                    '<option value="other">Other</option>';
+        var html = '<div id="level3cont" class="control-group">' +
+                       '<label class="control-label" for="controls">Hardware</label>' +
+                       '<div class="controls">' +
+                           '<select id="level3" name="level3" class="input-xlarge">' +
+                               '<option value="">---</option>' +
+                               l3options +
+                            '</select>' +
+                            '<input id="other" type="text" name="other" class="input-xlarge" placeholder="(enter Hardware if Other)" />' +
+                        '</div>' +
+                    '</div>';
+        $(html).insertBefore('#submit-button-container');
+        //$('#metadata_form').append(html);
+    } else if ($('#level1').val() == 'it-admin') {
+        $('#level3cont').remove();
+        l3options = '<option value="Security">Security</option>' +
+                    '<option value="Access">Access</option>' +
+                    '<option value="System Check">System Check</option>' +
+                    '<option value="Phone">Phone</option>' +
+                    '<option value="Network">Network</option>' +
+                    '<option value="FirmBase">FirmBase</option>' +
+                    '<option value="other">Other</option>';
+        var html = '<div id="level3cont" class="control-group">' +
+                       '<label class="control-label" for="controls">Task</label>' +
+                       '<div class="controls">' +
+                           '<select id="level3" name="level3" class="input-xlarge">' +
+                               '<option value="">---</option>' +
+                               l3options +
+                            '</select>' +
+                            '<input id="other" type="text" name="other" class="input-xlarge" placeholder="(enter Task if Other)" />' +
+                        '</div>' +
+                    '</div>';
+        $(html).insertBefore('#submit-button-container');
+        //$('#metadata_form').append(html);
+    }
+    
+}
+
+function save_metadata_tags() {
+    $('#messages').empty();
+    var level1, level2, level3, client, other;
+    level1 = $('#level1').val();
+    level2 = $('#level2').val();
+    level3 = $('#level3').val();
+    client = $('#client').val();
+    other = $('#other').val();
+    if (level1.length==0){
+        $('#messages').append('<div class="alert alert-danger">Select a Main tag.</div>')
+        return;
+    }
+
+    if (level2.length==0){
+        $('#messages').append('<div class="alert alert-danger">Select AAC or Client.</div>')
+        return;
+    }
+    
+    var tags = level1 + ',';
+    if (level2.trim()!='client') {
+        tags += level2 + ',';
+    }
+    
+    if ($('#client').length) {
+        if (client.trim().length>0) {
+            tags += client.trim() + ',';
+        } else {
+            $('#messages').append('<div class="alert alert-danger">Select a Client tag.</div>')
+            return;
+        }
+    }
+    
+    if ($('#level3').length) {
+        if (level3.trim().length>0) {
+            if (level3.trim()!='other'){
+                tags += level3.trim() + ',';
+            }
+        } else {
+            if (level1=='it-software') {
+                $('#messages').append('<div class="alert alert-danger">Select a Software.</div>')
+            } else if (level1=='it-hardware'){
+                $('#messages').append('<div class="alert alert-danger">Select a Hardware.</div>')
+            } else if (level1=='it-admin') {
+                $('#messages').append('<div class="alert alert-danger">Select a Task.</div>')
+            }
+            return;
+        }
+
+        if (level3 == 'other') {
+            if (other.trim().length>0) {
+                tags += other.trim();
+            } else {
+                $('#messages').append('<div class="alert alert-danger">Provide an "Other".</div>')
+                return;
+            }
+        }
+    } else if ($('#other').length) {
+        if (other.trim().length>0) {
+            tags += other.trim();
+        } else {
+            $('#messages').append('<div class="alert alert-danger">Provide an "Other".</div>')
+            return;
+        }
+    }
+
+    $('#messages').append('<div class="alert alert-success">Saving...</div>')
+    var data = {'tag': tags,
+                'csrfmiddlewaretoken': $('[name="csrfmiddlewaretoken"]').val()}
+    var url = "{% url 'it_ticket_tags' it_ticket.id %}";
+    $.post(url, data,
+        function (data) {
+            window.opener.location.reload(false);
+            window.close();
+        }
+    );
+}
+
+$('#level1').change(set_level3_options);
+$('#level2').change(set_level3_options);
+$('#metadata_form').submit(
+    function (e) {
+        e.preventDefault();
+        save_metadata_tags();
+    }
+);
+</script>
+{% endblock extrajs %}

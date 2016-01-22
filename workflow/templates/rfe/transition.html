@@ -1,0 +1,129 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load workflow_templatetags %}
+
+{% load url from future %}
+{% load bootstrap_toolkit %}
+
+{% block extracss %}
+<link href="{{ STATIC_URL }}ajaxuploader/css/fileuploader.css" media="screen" rel="stylesheet" type="text/css" />
+{% endblock extracss %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="{% url 'list_open_rfes' %}">Open SRs</a>
+        <span class="divider">/</span>{{ transition.name }} {{ objectt }}
+    </li>
+{% endblock crumbs %}
+
+{% block title %}{{ transition.name }} {{ object }}{% endblock title %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>{{ transition.name }} {{ object }}</h2>
+        </div>
+        <div class="span4">
+            <h3>Current Ticket Details</h3>
+            <table class="table table-condensed table-hover table-bordered">
+                <tr><th>Service Request ID</th><td>{{ object.form_id }}</td></tr>
+                <tr><th>Status</th><td>{{ object.status }}</td></tr>
+                <tr><th>Submit Time</th><td>{{ object.created_at }}</td></tr>
+                <tr><th>Submitter</th><td>{{ object.submitter }}</td></tr>
+                <tr><th>Creator</th><td>{{ object.created_by }}</td></tr>
+                <tr><th>Last Edited By</th><td>{{ object.last_user }}</td></tr>
+                <tr><th>Last Activity</th><td>{{ object.last_activity }}</td></tr>
+                <tr><th>Contact</th><td>{{ object.contact_name }}, {{ object.contact_phone }}, <a href="mailto:{{ object.email }}">{{ object.email }}</a></td></tr>
+                <tr><th>Assigned To</th><td>{{ object.assignee }}</td></tr>
+                <tr><th>A/C Status</th><td>{{ object.get_ac_status_display }}</td></tr>
+                <tr><th>A/C Location</th><td>{{ object.ac_location }}</td></tr>
+                <tr><th>A/C Manufacturer</th><td>{{ object.get_ac_manufacturer_display }}</td></tr>
+                <tr><th>A/C Model</th><td>{{ object.get_ac_model_display }}</td></tr>
+                <tr><th>A/C Serial Number</th><td>{{ object.ac_serial_number }}</td></tr>
+                <tr><th>A/C Registration Number</th><td>{{ object.ac_registration_number }}</td></tr>
+                <tr><th>A/C Tail Number</th><td>{{ object.ac_tail_number }}</td></tr>
+                <tr><th>A/C Flight Time</th><td>{{ object.ac_flight_time }}</td></tr>
+                <tr><th>A/C Cycles</th><td>{{ object.ac_cycles }}</td></tr>
+                <tr><th>Description</th><td>{{ object.description|linebreaks }}</td></tr>
+                <tr><th>Requested Action</th><td>{{ object.requested_action|linebreaks }}</td></tr>
+                <tr><th>Response Required By</th><td>{{ object.response_required_by }}</td></tr>
+                <tr><th>Disposition</th><td>{{ object.disposition|linebreaks }}</td></tr>
+            </table>
+        </div>
+        <div class="span4">
+            <h3>Update Ticket</h3>
+            <form id="transition-rfe" class="form-horizontal" action="" method="post" accept-charset="utf-8">
+                {% csrf_token %}
+                {{ form|as_bootstrap:"horizontal" }}
+                <div class="form-actions">
+                    <input class="btn {{ transition.button_type }}" type='submit' name='submit' value='{{ transition.name }}' />
+                    <input class="btn btn-inverse" type='button' value='Cancel' onclick='history.go(-1)' />
+                </div>
+            </form>
+        </div>
+        {% url 'view_rfe' object.id as next_url %}
+        <div class="span3">
+            <h3>Notes</h3>
+            {% if object.get_notes|length %}
+            <ul>
+                {% for note in object.get_notes %}
+                <li><strong>{{ note.author }} @ {{ note.last_edited }}</strong><br/>{{ note.text|linebreaks }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <em>There are currently no notes for this ticket.</em>
+            {% endif %}
+            <br/><small>You can add a new note use the field in the column to the left.</small>
+
+            <h3>Attachments</h3>
+            <div id="file-uploader" name="File" class="controls">
+              <noscript>          
+                <p>Please enable JavaScript to use file uploader.</p>
+              </noscript>
+              <p class="help-block">Drag and drop a file (PDF) of the memo here.</p>
+            </div>
+            {% for attachment in object.get_attachments %}
+            <blockquote>
+            <p><a href="{% url 'download_rfe_attachment' attachment.file_id %}" target="_blank">{{ attachment.filename }}</a></p>
+            <small>{{ attachment.uploader }} @ {{ attachment.upload_utc }}</small>
+            </blockquote>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock content %}
+
+{% block extrajs %}
+<script src="{{ STATIC_URL }}ajaxuploader/js/fileuploader.js" ></script>
+<script>
+    ATTACHMENTS = {};
+    $(function(){
+    var uploader = new qq.FileUploader({
+        action: "{% url 'add_rfe_attachment' object.id %}",
+        element: $('#file-uploader')[0],
+        multiple: true,
+        onComplete: function(id, filename, responseJSON) {
+            if(responseJSON.success) {
+                ATTACHMENTS[id] = {'id': id,
+                                   'filename': filename,
+                                   'json': responseJSON};
+                // hide the button since we only want 1 file uploaded
+                $('.qq-upload-button').hide()
+            } else {
+                console.log('fail', id, filename, responseJSON);
+            }
+        },
+        onAllComplete: function(uploads) {
+            // uploads is an array of maps
+            // the maps look like this: {file: FileObject, response: JSONServerResponse}
+            // do nothing
+        },
+        params: {
+            'csrf_token': '{{ csrf_token }}',
+            'csrf_name': 'csrfmiddlewaretoken',
+            'csrf_xname': 'X-CSRFToken',
+        },
+    });
+    });
+</script>
+{% endblock extrajs %}

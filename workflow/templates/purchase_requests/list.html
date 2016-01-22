@@ -1,0 +1,131 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags %}
+{% load workflow_templatetags %}
+{% load bootstrap_toolkit %}
+{% load url from future %}
+
+{% block title %}Purchase Requests{% endblock title %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="">Purchase Requests List</a>
+    </li>
+{% endblock crumbs %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>Purchase Requests</h2>
+            <div style="padding-bottom: 12px;">
+                {% if perms.workflow.add_firmbaseticket %}
+                    <a class="btn btn-primary" href="{% url 'create_purchase_request' %}">Submit Purchase Request</a>
+                {% endif %}
+                <a class="btn" href="{% url 'list_open_purchase_requests' %}">Show Open Tickets</a>
+                <a class="btn" href="{% url 'list_all_purchase_requests' %}">Show All Tickets</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span12">
+            <form class='form-inline' accept-charset='UTF-8' method='get' action=''>
+                {{ form|as_bootstrap:"inline" }}
+                <button type='submit' class='btn' name='submit'>Search</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row-fluid">
+        <div class="span12">
+            {% load pagination_tags %}
+            {% autopaginate object_list %}
+
+            {% paginate %}
+            {% if object_list|length == 0 %}
+            There are no Purchase Requests to display.
+            {% else %}
+            <table class='table table-bordered table-striped table-condensed'>
+                <thead>
+                    <tr>
+                        <th>Ticket ID</th>
+                        <th>Status</th>
+                        <th>Type</th>
+                        <th>Actions</th>
+                        <th>Submit</th>
+                        <th>Assigned to</th>
+                        <th>Last Activity</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for prq in object_list %}
+                        <tr>
+                            <td style="white-space: nowrap"><a href="{% url 'view_purchase_request' prq.pk %}">{{ prq.form_id }}</a></td>
+                            <td style="white-space: nowrap"><span class="label {{ prq.status.label_style}}">{{ prq.status }}</span<</td>
+                            <td style="white-space: nowrap">{{ prq.get_type_display }}</td>
+                            <td style="white-space: nowrap">
+                                {% if not prq.status.terminal %}
+                                {% if perms.workflow.edit_firmbaseticket or prq.submitter == request.user or prq.created_by == request.user %}
+                                <a class="btn btn-primary btn-small" href='{% url "edit_purchase_request" prq.pk %}'><i class="icon-pencil icon-white"></i> Edit</a>
+                                {% endif %}
+                                {% endif %}
+                                {% if prq.next_actions|length > 2 %}
+                                <div class="btn-group">
+                                    <a class="btn btn-small dropdown-toggle" data-toggle="dropdown" href="#">
+                                    More
+                                    <span class="caret"></span>
+                                    </a>
+                                    <ul class="dropdown-menu" style="padding: 5px 5px 5px 5px;">
+                                    {% for next_action in prq.next_actions %}
+                                        {% if next_action.permissions == 'all' %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_purchase_request' prq.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                        {% elif next_action.permissions == 'guardian' %}
+                                            {% get_obj_perms request.user for next_action as "na_perms" %}
+                                            {% if 'can_execute_transition' in na_perms %}
+                                                <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_purchase_request' prq.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                            {% endif %}
+                                        {% elif next_action.permissions == 'creator' %}
+                                          {% if prq.submitter == request.user or prq.created_by == request.user %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_purchase_request' prq.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                          {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    </ul>
+                                </div>
+                                {% else %}
+                                {% for next_action in prq.next_actions %}
+                                    {% if next_action.permissions == 'all' %}
+                                        <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_purchase_request' prq.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                    {% elif next_action.permissions == 'guardian' %}
+                                        {% get_obj_perms request.user for next_action as "na_perms" %}
+                                        {% if 'can_execute_transition' in na_perms %}
+                                            <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_purchase_request' prq.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                        {% endif %}
+                                    {% elif next_action.permissions == 'creator' %}
+                                      {% if prq.submitter == request.user or prq.created_by == request.user %}
+                                        <a class="btn {{ next_action.button_type }} btn-small" href="{% url 'transition_purchase_request' prq.pk %}?transition_id={{ next_action.id }}">{{ next_action.name }}</a>
+                                      {% endif %}
+                                    {% endif %}
+                                {% endfor %}
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap">{{ prq.submitter }} @ {{ prq.created_at|date:"N j, P" }}</td>
+                            <td style="white-space: nowrap">
+                                {{ prq.assignee }}
+                                {% if not prq.status.terminal and perms.workflow.assign_purchase_request %}
+                                    <a class="btn btn-mini" href='{% url "assign_purchase_request" prq.pk %}' title="Change assigned user"><i class="icon-pencil"></i> </a>
+                                {% endif %}
+                            </td>
+                            <td style="white-space: nowrap">{{ prq.last_user }} @ {{ prq.last_activity|date:"N j, P" }}</td>
+                            <td>{{ prq.description|truncatewords:12 }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+            {% paginate %}
+        </div>
+    </div>
+{% endblock content %}

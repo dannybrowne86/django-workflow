@@ -1,0 +1,242 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load workflow_templatetags %}
+
+{% load url from future %}
+{% load bootstrap_toolkit %}
+{% load humanize %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="{% url 'list_recurring_general_tasks' %}">Recurring General Tasks</a>
+        <span class="divider">/</span>
+        {% if not object %}
+            <a href="{% url 'create_recurring_general_task' %}">Create Recurring General Task</a>
+        {% else %}
+            <a href="{% url 'view_recurring_general_task' object.pk %}">{{ object }}</a>
+            <span class="divider">/</span>
+            <a href="{% url 'edit_recurring_general_task' object.pk %}">Edit Wizard</a>
+        {% endif %}
+    </li>
+{% endblock crumbs %}
+
+{% block title %}{% if not object %}Create Recurring General Task{% else %}Edit {{ object }}{% endif %}{% endblock title %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>{% if not object %}Creat Recurring General Task{% else %}Edit {{ object }}{% endif %}</h2>
+
+            <br style="clear: both;" />
+
+            <div>
+                <h3>Recurring Task Details</h3>
+                <dl class="dl-horizontal">
+                    <dt>Name</dt><dd>{{ data.name }}</dd>
+                    <dt>Description</dt><dd>{{ data.description|linebreaks }}</dd>
+                    <dt>Active</dt>
+                        <dd>{% if data.active %}
+                            <span class="label label-success"><i class="icon-white icon-ok"></i></span>
+                            {% else %}
+                            <span class="label label-important"><i class="icon-white icon-remove"></i></span>
+                            {% endif %}
+                        </dd>
+                    <dt></dt>
+                </dl>
+
+                <h3>Task Details</h3>
+                <dl class="dl-horizontal">
+                    <dt>Description</dt><dd>{{ data.task_description|linebreaks }}</dd>
+                    <dt>Assignee</dt><dd>{{ data.task_assignee }}</dd>
+                    <dt>Effort</dt><dd>{{ data.task_effort }} hours</dd>
+                    <dt>Priority</dt><dd><span class="label label-{{ data.task_priority }}">{{ data.task_priority_label }}</span></dd>
+                    <dt></dt>
+                </dl>
+
+                <h3>Recurrence Details</h3>
+                <dl class="dl-horizontal">
+                    <dt>Recurrence</dt>
+                    {% if data.recurrence_type == '0' %}
+                    <dd>
+                        {% if data.interval_for_due == 0 %}
+                        A new task will be created every 
+                        {% else %}
+                        A new task will be due every 
+                        {% endif %}
+                        workday, starting on {{ data.start_date }}
+                        {% if data.end_condition == 'never' %}.{% endif %}
+                        {% if data.end_condition == 'date' %} and will end on {{ data.end_date }}.{% endif %}
+                        {% if data.end_condition == 'num_occurrences' %} and will end after {{ data.after }} occurrences.{% endif %}
+                        <br/>
+                        {% if data.due_interval == 0 %}
+                        The task will be due the same day it is created.
+                        {% else %}
+                            {% if data.interval_for_due == 0 %}
+                            The task will be due {{ data.due_interval }} {{ data.due_unit }} after it is created.
+                            {% else %}
+                            The task will be created {{ data.due_interval }} {{ data.due_unit }} before it is due.
+                            {% endif %}
+                        {% endif %}
+                    </dd>
+                    {% endif %}
+
+                    {% if data.recurrence_type == '1' %}
+                    <dd>
+                        {% if data.interval_for_due == 0 %}
+                        A new task will be created every 
+                        {% else %}
+                        A new task will be due every 
+                        {% endif %}
+                        {% if data.repeat_interval == 2 %}
+                        other
+                        {% endif %}{% if data.repeat_interval >= 3 %}
+                        {{ data.repeat_interval|ordinal }}
+                        {% endif %}
+                        {% for dow in data.weekdays %}
+                            {% if dow == '0' %}Monday{% endif %}
+                            {% if dow == '1' %}Tuesday{% endif %}
+                            {% if dow == '2' %}Wednesday{% endif %}
+                            {% if dow == '3' %}Thursday{% endif %}
+                            {% if dow == '4' %}Friday{% endif %}
+                        {% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                        ; starting on {{ data.start_date }}
+                        {% if data.end_condition == 'never' %}.{% endif %}
+                        {% if data.end_condition == 'date' %} and will end on {{ data.end_date }}.{% endif %}
+                        {% if data.end_condition == 'num_occurrences' %} and will end after {{ data.after }} occurrences.{% endif %}
+                        <br/>
+                        {% if data.due_interval == 0 %}
+                        The task will be due the same day it is created.
+                        {% else %}
+                            {% if data.interval_for_due == 0 %}
+                            The task will be due {{ data.due_interval }} {{ data.due_unit }} after it is created.
+                            {% else %}
+                            The task will be created {{ data.due_interval }} {{ data.due_unit }} before it is due.
+                            {% endif %}
+                        {% endif %}
+                    </dd>
+                    {% endif %}
+
+                    {% if data.recurrence_type == '2' %}
+                    <dd>{% if data.interval_for_due == 0 %}
+                        A new task will be created on the 
+                        {% else %}
+                        A new task will be due on the 
+                        {% endif %} 
+                        {% for dom in data.days_of_month %}
+                            {{ dom|ordinal }}
+                            {% if not forloop.last %},{% endif %}
+                        {% endfor %}
+                        day of every
+                        {% if data.repeat_interval == 2 %}
+                            other
+                        {% endif %}
+                        {% if data.repeat_interval >= 3 %}
+                            {{ data.repeat_interval|ordinal }}
+                        {% endif %}
+                        month.
+                        <br/>
+                        {% if data.due_interval == 0 %}
+                        The task will be due the same day it is created.
+                        {% else %}
+                            {% if data.interval_for_due == 0 %}
+                            The task will be due {{ data.due_interval }} {{ data.due_unit }} after it is created.
+                            {% else %}
+                            The task will be created {{ data.due_interval }} {{ data.due_unit }} before it is due.
+                            {% endif %}
+                        {% endif %}
+                    </dd>
+                    {% endif %}
+
+                    {% if data.recurrence_type == '3' %}
+                    <dd>None - This is a one-time task in the future.</dd>
+                    {% endif %}
+
+                    {% if data.recurrence_type == '4' %}
+                    <dd>
+                        {% if data.interval_for_due == 0 %}
+                        A new task will be created on the 
+                        {% else %}
+                        A new task will be due on the 
+                        {% endif %}
+                        {{ data.ordinal|ordinal }}
+                        {% if data.weekday == '0' %}Monday{% endif %}
+                        {% if data.weekday == '1' %}Tuesday{% endif %}
+                        {% if data.weekday == '2' %}Wednesday{% endif %}
+                        {% if data.weekday == '3' %}Thursday{% endif %}
+                        {% if data.weekday == '4' %}Friday{% endif %}
+                        of every
+                        {% if data.repeat_interval == 2 %}
+                            other
+                        {% endif %}
+                        {% if data.repeat_interval >= 3 %}
+                            {{ data.repeat_interval|ordinal }}
+                        {% endif %}
+                        month.
+                        <br/>
+                        {% if data.due_interval == 0 %}
+                        The task will be due the same day it is created.
+                        {% else %}
+                            {% if data.interval_for_due == 0 %}
+                            The task will be due {{ data.due_interval }} {{ data.due_unit }} after it is created.
+                            {% else %}
+                            The task will be created {{ data.due_interval }} {{ data.due_unit }} before it is due.
+                            {% endif %}
+                        {% endif %}
+                    </dd>
+                    {% endif %}
+
+                    {% if data.recurrence_type == '5' %}
+                    <dd>
+                        {% if data.interval_for_due == 0 %}
+                        A new task will be created yearly on 
+                        {% else %}
+                        A new task will be due yearly on 
+                        {% endif %}
+                        {{ data.start_date|date:"F jS" }}
+                        of every
+                        {% if data.repeat_interval == 2 %}
+                            other
+                        {% endif %}
+                        {% if data.repeat_interval >= 3 %}
+                            {{ data.repeat_interval|ordinal }}
+                        {% endif %}
+                        year starting in {{ data.start_date|date:"Y"}}.
+                        <br/>
+                        {% if data.due_interval == 0 %}
+                        The task will be due the same day it is created.
+                        {% else %}
+                            {% if data.interval_for_due == 0 %}
+                            The task will be due {{ data.due_interval }} {{ data.due_unit }} after it is created.
+                            {% else %}
+                            The task will be created {{ data.due_interval }} {{ data.due_unit }} before it is due.
+                            {% endif %}
+                        {% endif %}
+                    </dd>
+                    {% endif %}
+                </dl>
+            </div>
+
+            
+            <br style="clear: both;" />            
+            <form id="create-edit-project" class="form-horizontal" action="" method="post" accept-charset="utf-8">
+                {% csrf_token %}
+                {{ wizard.management_form }}
+                {% if wizard.form.forms %}
+                    {{ wizard.form.management_form }}
+                    {% for form in wizard.form.forms %}
+                        {{ form|as_bootstrap:"horizontal" }}
+                    {% endfor %}
+                {% else %}
+                    {{ wizard.form|as_bootstrap:"horizontal" }}
+                {% endif %}
+
+                <div class="form-actions">
+                    <input class="btn btn-primary" type='submit' name='submit' value='Save' />
+                    <input class="btn" type='button' value='Previous' onclick='history.go(-1)' />
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock content %}

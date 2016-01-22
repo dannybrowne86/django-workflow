@@ -1,0 +1,88 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+
+{% load guardian_tags %}
+{% load workflow_templatetags %}
+{% load bootstrap_toolkit %}
+{% load url from future %}
+
+{% block title %}Recurring General Tasks{% endblock title %}
+
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span><a href="">Recurring General Tasks List</a>
+    </li>
+{% endblock crumbs %}
+
+{% block content %}
+    <div class="row-fluid">
+        <div class="span12">
+            <h2>Recurring General Tasks</h2>
+            <div style="padding-bottom: 12px;">
+                {% if perms.workflow.add_recurringgeneraltask %}
+                    <a class="btn btn-primary" href="{% url 'create_recurring_general_task' %}">Create Recurring General Task</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% if form %}
+    <div class="row-fluid">
+        <div class="span12">
+            <form class='form-inline' accept-charset='UTF-8' method='get' action=''>
+                {{ form|as_bootstrap:"inline" }}
+                <button type='submit' class='btn' name='submit'>Search</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row-fluid">
+        <div class="span12">
+            {% load pagination_tags %}
+            {% autopaginate object_list %}
+
+            {% paginate %}
+            <table class='table table-bordered table-striped table-condensed'>
+                <thead>
+                    <tr>
+                        <th>Ticket ID</th>
+                        <th>Name</th>
+                        <th>Active</th>
+                        <th>Default Assignee</th>
+                        <th>Description</th>
+                        <th>Recurrence<br/><em>Next Date</em></th>
+                        <th>Limit to one Active Task</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rgt in object_list %}
+                        <tr>
+                            <td style="white-space: nowrap">
+                                <a href="{% url 'view_recurring_general_task' rgt.pk %}">{{ rgt.form_id }}</a>
+                            </td>
+                            <td style="white-space: nowrap">{{ rgt.name }}</td>
+                            <td>
+                            {% if rgt.active %}
+                                <span class="label label-success"><i class="icon-white icon-ok"></i></span>
+                            {% else %}
+                                <span class="label label-important"><i class="icon-white icon-remove"></i></span>
+                            {% endif %}
+                            </td>
+                            <td>{{ rgt.task_assignee }}</td>
+                            <td>{{ rgt.description|truncatewords:12 }}</td>
+                            <td>{{ rgt.recurrence_display }}<br/><em>{{ rgt.next_task_created }}</em></td>
+                            <td>
+                            {% if rgt.limit_to_one_active_task %}
+                                <span class="label label-success"><i class="icon-white icon-ok"></i></span>
+                            {% else %}
+                                <span class="label label-important"><i class="icon-white icon-remove"></i></span>
+                            {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% paginate %}
+        </div>
+    </div>
+{% endblock content %}

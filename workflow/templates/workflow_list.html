@@ -1,0 +1,70 @@
+{% extends "../../project_toolbox_main/templates/base.html" %}
+{% load guardian_tags %}
+{% block crumbs %}
+    {{ block.super }}
+    <li>
+        <span class="divider">/</span>
+        <a href="/workflow/{{ workflow.id }}/all">{{ workflow.name }}</a>
+    </li>
+    <li>
+        <span class="divider">/</span>
+        <a href="/workflow/{{ workflow.id }}/{{ list.url }}">{{ list.name }}</a>
+    </li>
+{% endblock crumbs %}
+
+    {% block extracss %}
+    {% endblock extracss %}
+
+    {% block content %}
+    <div id="new_memo_workflow" style="margin-bottom: 18px;">
+        <a type="button" class="btn btn-primary" href="start/">Create New {{ workflow.name }}</a>
+    </div>
+
+    <div id="workflow_list_container">       
+        <h2>{{ list.label }} {{ workflow.name }}s</h2>
+        {% if workflow_instances|length %}
+        <table id="{{list.name}}_{{workflow.short_name}}_list" class="table table-striped table-bordered table-hover table-condensed">
+            <thead><tr>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Next Actions</th>
+                <th>Submit Time</th>
+                <th>Last Activity</th>
+                <th>Last User</th>
+            </tr></thead>
+            <tbody>
+                {% for wi in workflow_instances %}
+                <tr id="{{wi.id}}">
+                    <td><a href="/workflow/instance/view/{{ wi.id }}">{{ wi.form_id }}</a></td>
+                    <td>{{ wi.current_state.name }}</td>
+                    <td>
+                        <div>
+                        {% for na in wi.next_actions %}
+                            {% get_obj_perms request.user for na as "tx_perms" %}
+                            {% if na.permissions == 'guardian' and "can_execute_transition" in tx_perms %}
+                                <a type="button" class="btn {{ na.button_type }}" href="/workflow/{{ wi.id }}/move/{{ na.end_state.id }}">{{ na.name }}</a>
+                            {% elif na.permissions == 'self' and wi.created_by == request.user %}
+                                <a type="button" class="btn {{ na.button_type }}" href="/workflow/{{ wi.id }}/move/{{ na.end_state.id }}">{{ na.name }}</a>
+                            {% elif na.permissions == 'all' %}
+                                <a type="button" class="btn {{ na.button_type }}" href="/workflow/{{ wi.id }}/move/{{ na.end_state.id }}">{{ na.name }}</a>
+                            {% endif %}
+                        {% endfor %}
+                        </div>
+                    </td>
+                    <td>{{ wi.created_at }}</td>
+                    <td>{{ wi.last_activity }}</td>
+                    <td>{{ wi.last_user }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="margin-bottom: 18px;"><h5>There are no {{ list.name }} {{ workflow.name }}s at this time.</h5></div>
+        {% endif %}
+    {% endblock %}
+
+    {% block extrajs %}
+    <script>
+    </script>
+    {% endblock extrajs %}
+
