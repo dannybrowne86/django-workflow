@@ -1,28 +1,28 @@
-from django.db import models
 from django.contrib.postgres.fields import ArrayField
-from django.db.models import Sum, Q
 from django.conf import settings
 from django.contrib.auth.models import User, Group
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
+from django.core.urlresolvers import reverse, reverse_lazy
+from django.db import models
+from django.db.models import Sum, Q
+
 from timepiece.crm.models import UserProfile, Business, PaidTimeOffRequest, \
     Project, Lead
-from timepiece.entries.models import Entry
 from timepiece.contracts.models import ProjectContract
-from django.core.urlresolvers import reverse, reverse_lazy
-from django.core.mail import send_mail
-import datetime, hashlib, random, calendar
-from dateutil.relativedelta import relativedelta
+from timepiece.entries.models import Entry
 
-import boto 
-from workflow.firmbase_tickets import sms as fbt_sms
-
+from taggit.managers import TaggableManager
 from holidays.models import Holiday
 import workdays
 
-from taggit.managers import TaggableManager
+import boto
+import calendar
+import datetime
+import hashlib
+import random
+from dateutil.relativedelta import relativedelta
 
-
-from workflow.general_task import emails as general_task_emails
 
 class Workflow(models.Model):
     """A Workflow is the highest level concept which is the budget for
@@ -32,8 +32,8 @@ class Workflow(models.Model):
     system.
     """
 
-    name = models.CharField(max_length=64, help_text='This is the name of the '
-        'workflow displayed in menus and navigation breadcrumbs.')
+    name = models.CharField(max_length=64, help_text='This is the name of '
+        'the workflow displayed in menus and navigation breadcrumbs.')
     short_name = models.CharField(max_length=8, help_text='This is the '
         'abbreviation used in the workflow ticket ID.')
     description = models.TextField(help_text='Provide a detailed description '
@@ -47,17 +47,17 @@ class State(models.Model):
     """States capture the steps of a workflow.  The terminal flag determines
     whether a ticket in a state is considered open or closed.
     """
-    # bootstrap 3 update  http://getbootstrap.com/components/#labels
+    # TODO: bootstrap 3 update  http://getbootstrap.com/components/#labels
     LABEL_STYLES = ( ('label', 'Grey'),
                      ('label label-success', 'Green'),
                      ('label label-warning', 'Gold'),
                      ('label label-important', 'Red'),
                      ('label label-info', 'Blue'),
                      ('label label-inverse', 'Black') )
-    
+
     name = models.CharField(max_length=32)
-    workflow = models.ManyToManyField(Workflow, blank=True, null=True,
-        help_text='Which workflows does this state exist in?')
+    workflow = models.ForeignKey(Workflow, blank=True, null=True,
+        help_text='Which workflow does this state exist in?')
     terminal = models.BooleanField(default=False, help_text='If a ticket is '
         'in this state, is that ticket terminated?  This is used to filter '
         'out closed/completed tickets.  If a transition exists out of this '
@@ -73,20 +73,16 @@ class Transition(models.Model):
     Transitions provide a mechanism for determining who can execute a
     transition and who is notified upon the transition of a ticket.
     """
-    PERMISSION_TYPES = ( ('guardian', 'Per Object Permissions'),
-                         ('creator', 'Creator has permissions'),
-                         ('submitter', 'Creator has permissions'),
-                         ('assignee', 'Current assignee has permission'),
-                         ('all', 'Everyone has permission') )
-
-    DEFAULT_ASSIGNEE_TYPES = ( ('creator', 'Change to Creator'),
-                               ('submitter', 'Change to Submitter'),
-                               ('default_assignee', 'Change to Specified User'),
-                               ('no_change', 'Do Not Change on Transition'),
-                               ('unassignee', 'Change to unassigned') )
+    DEFAULT_ASSIGNEE_TYPES = (
+        ('creator', 'Change to Creator'),
+        ('submitter', 'Change to Submitter'),
+        ('default_assignee', 'Change to Specified User'),
+        ('no_change', 'Do Not Change on Transition'),
+        ('unassignee', 'Change to unassigned')
+    )
 
     name = models.CharField(max_length=32)
-    workflow = models.ManyToManyField(Workflow, blank=True, null=True,
+    workflow = models.ForeignKey(Workflow, blank=True, null=True,
         help_text='Which workflows does this transition exist in?')
     start_state = models.ForeignKey(State, related_name='start',
         blank=True, null=True)
@@ -100,13 +96,8 @@ class Transition(models.Model):
         help_text='If the Default Assignee Type is "Change to a Specific'
         'User", this field determines who that user is.',
         blank=True, null=True)
-    notify_groups = models.ManyToManyField(Group, blank=True, null=True,
-        help_text='What Groups do you want to notify when this transition '
-        'is executed?')
-    notification_email_template = models.CharField(max_length=64,
-        blank=True, null=True, default='default.html',
-        help_text='What is the name of the template file to use for the'
-        'notification emails for this transition?')
+    notification_email_template = models.FileField(blank=True, null=True,
+        upload_to='workflow-transition-email-templates', max_length=256)
     backup_notification_text = models.TextField(blank=True,
         help_text='For users that do not have HTML email, what is the backup '
             'text for the email?')
@@ -119,7 +110,7 @@ class Transition(models.Model):
         max_length=64, help_text='What is the class name of the form to use '
         'for this transition?')
 
-    # who can execute thie permissison?
+    # who can execute this transition?
     perms_all = models.BooleanField(default=False,
         help_text='All users can execute this transition.')
     perms_creator = models.BooleanField(default=False,
@@ -132,6 +123,9 @@ class Transition(models.Model):
         help_text='Reference the per-object permissions managed by'
         'django-guardian to determine who can execute this transition.')
 
+    class Meta:
+        permissions = (('execute_transition', 'Can execute transition.'),)
+
     def __unicode__(self):
         if self.start_state:
             return '%s: %s -> %s' % (self.name, self.start_state.name,
@@ -142,9 +136,9 @@ class Transition(models.Model):
 
 class Ticket(models.Model):
     LOW = 'info'
-    NORMAL = 'inverse' # change to primary with Bootstrap 3
+    NORMAL = 'inverse' # TODO: change to primary with Bootstrap 3
     HIGH = 'warning'
-    CRITICAL = 'important' # change to danger with Bootstrap 3
+    CRITICAL = 'important' # TODO: change to danger with Bootstrap 3
     PRIORITIES = (
         (LOW, 'Low'),
         (NORMAL, 'Normal'),
@@ -170,7 +164,7 @@ class Ticket(models.Model):
     last_activity = models.DateTimeField(auto_now=True)
     scheduled = models.DateTimeField(verbose_name='Scheduled Date',
         blank=True, null=True)
-    
+
     effort = models.DecimalField(max_digits=5, decimal_places=2, null=True,
         blank=True, verbose_name='Level of Effort', help_text='Estimate the '
             'number of hours required to complete the task.')
@@ -180,8 +174,9 @@ class Ticket(models.Model):
             'complete the task.')
     priority = models.CharField(max_length=12, choices=PRIORITIES,
         default=NORMAL)
-    
-    fixed_due_date = models.DateField(verbose_name='Fixed Due Date', null=True, blank=True)
+
+    fixed_due_date = models.DateField(verbose_name='Fixed Due Date',
+        null=True, blank=True)
     relative_due_date_ticket = models.ForeignKey('self',
         verbose_name='Relative Due Date Linked Task',
         null=True, blank=True)
@@ -192,10 +187,11 @@ class Ticket(models.Model):
     
     description = models.TextField()
     response = models.TextField(blank=True)
-    status = models.ForeignKey(State)
+    status = models.ForeignKey(State,
+        limit_choices_to=Q(workflow=self.workflow))
     
     # putting this here as ManyToMany because it would be bad practice to
-    # add this to the Entry object, imho
+    # add this to the Entry object within django-timepiece entries, imho
     entries = models.ManyToManyField(Entry, null=True, blank=True)
     users = models.ManyToManyField(User, null=True, blank=True)
     tags = TaggableManager()
@@ -222,8 +218,8 @@ class Ticket(models.Model):
             raise ValidationError('You cannot set both a Fixed Due Date and a '
                 'Relative Due Date Days Delta.')
         
-        elif self.fixed_due_date is None and (self.relative_due_date_ticket
-            and self.relative_due_days_delta is None):
+        elif self.fixed_due_date is None and self.relative_due_date_ticket \
+            and self.relative_due_days_delta is None:
 
             raise ValidationError('To set a Relative Due Date set both the '
                 'Relative Due Date Linked Task (the associated Ticket '
@@ -235,11 +231,14 @@ class Ticket(models.Model):
             is None and self.relative_due_days_delta):
             raise ValidationError('To set a Relative Due Date set both the '
                 'Relative Due Date Linked Task (the associated Ticket '
-                'to delta the Due Date off of) and the Relative Due Date Days '
-                'Delta (integer of difference between referenced Ticket '
+                'to delta the Due Date off of) and the Relative Due Date '
+                'Days Delta (integer of difference between referenced Ticket '
                 'Due Date and this tickets\'s due date).')
         
-        elif self.fixed_due_date is None and self.relative_due_date_ticket is None and self.relative_due_days_delta is None:
+        elif self.fixed_due_date is None and \
+            self.relative_due_date_ticket is None and \
+            self.relative_due_days_delta is None:
+
             raise ValidationError('You must set either a Fixed Due Date or '
                 'both a Relative Due Date General Task (the associated '
                 'General Task to delta the Due Date off of) and Relative Due '
@@ -288,7 +287,15 @@ class Ticket(models.Model):
                     delayed_days  -= delta
 
             self.cached_due_date = due_date
-        self.save()
+        # self.save()
+        # whatever calls this should do the save (if that is desired)
+
+    @property
+    def requested_date(self):
+        if self.cached_due_date is None:
+            self.set_cached_due_date()
+            self.save()
+        return self.cached_due_date
 
     @property
     def hours_spent(self):
@@ -316,7 +323,8 @@ class Ticket(models.Model):
         else:
             if type(end_date) is datetime.datetime:
                 end_date = end_date.date()
-            # get holidays in years covered across today through requested/scheduled date
+            # get holidays in years covered across today through
+            # requested/scheduled date
             holidays = []
             ptor_time = 0.0
             for year in range(datetime.date.today().year, end_date.year+1):
@@ -360,15 +368,15 @@ class Ticket(models.Model):
     @property
     def priority_scale(self):
         if self.priority == self.LOW:
-            return 0.0 # 0.5
+            return get_setting('WORKFLOW_LOW_PRIORITY_SCALING_FACTOR')
         elif self.priority == self.NORMAL:
-            return 10.0 # 1.0
+            return get_setting('WORKFLOW_NORMAL_PRIORITY_SCALING_FACTOR')
         elif self.priority == self.HIGH:
-            return 18.0 # 4.0
+            return get_setting('WORKFLOW_HIGH_PRIORITY_SCALING_FACTOR')
         elif self.priority == self.CRITICAL:
-            return 32.0 # 9.0
+            return get_setting('WORKFLOW_CRITICAL_PRIORITY_SCALING_FACTOR')
         else:
-            return 10.0
+            return get_setting('WORKFLOW_DEFAULT_PRIORITY_SCALING_FACTOR')
     
     @property
     def weighted_priority(self):
@@ -390,7 +398,7 @@ class Ticket(models.Model):
         return "%s-%s-%d-%04d" % (self.workflow.short_name,
                                   business.short_name,
                                   time.year,
-                                  count)
+                                  count+1)
 
     def save(self, *args, **kwargs):
         if self.form_id is None:
@@ -935,11 +943,12 @@ class TicketHistory(models.Model):
         blank=True, verbose_name='Management Level of Effort Estimate',
         help_text='Management estimate of the number of hours required to '
             'complete the task.')
-    priority = models.CharField(max_length=12, choices=PRIORITIES,
-        default=NORMAL)
+    priority = models.CharField(max_length=12, choices=Ticket.PRIORITIES,
+        default=Ticket.NORMAL)
     
-    fixed_due_date = models.DateField(verbose_name='Fixed Due Date', null=True, blank=True)
-    relative_due_date_ticket = models.ForeignKey('self',
+    fixed_due_date = models.DateField(verbose_name='Fixed Due Date',
+        null=True, blank=True)
+    relative_due_date_ticket = models.ForeignKey(Ticket,
         verbose_name='Relative Due Date Linked Task',
         null=True, blank=True)
     relative_due_days_delta = models.IntegerField(
@@ -976,7 +985,7 @@ class TicketAttachment(models.Model):
     description = models.TextField(blank=True, null=True)
 
     class Meta:
-        ordering = ('created_at',)
+        ordering = ('-created_at',)
 
     def __unicode__(self):
         return "%s: %s" % (str(self.ticket), self.filename)
@@ -989,7 +998,8 @@ class TicketAttachment(models.Model):
 
     def get_download_url(self):
         s3_file_path = self.get_s3_file_path()
-        url = s3_file_path.generate_url(expires_in=15) # expiry time is in seconds
+        url = s3_file_path.generate_url(expires_in=10)
+        # expiry time is in seconds
         return url
 
     def delete(self):
